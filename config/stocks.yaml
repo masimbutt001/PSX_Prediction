@@ -1,0 +1,61 @@
+# Pakistan Stock Exchange (PSX) Top Liquid Universe
+stocks:
+  - symbol: OGDC
+    name: "Oil & Gas Development Company Limited"
+    sector: "Oil & Gas Exploration"
+    yahoo_ticker: "OGDC.KA"
+    enabled: true
+
+  - symbol: PPL
+    name: "Pakistan Petroleum Limited"
+    sector: "Oil & Gas Exploration"
+    yahoo_ticker: "PPL.KA"
+    enabled: true
+
+  - symbol: ENGRO
+    name: "Engro Corporation Limited"
+    sector: "Fertilizer / Conglomerate"
+    yahoo_ticker: "ENGRO.KA"
+    enabled: true
+
+  - symbol: FFC
+    name: "Fauji Fertilizer Company Limited"
+    sector: "Fertilizer"
+    yahoo_ticker: "FFC.KA"
+    enabled: true
+
+  - symbol: LUCK
+    name: "Lucky Cement Limited"
+    sector: "Cement"
+    yahoo_ticker: "LUCK.KA"
+    enabled: true
+
+  - symbol: HBL
+    name: "Habib Bank Limited"
+    sector: "Commercial Banks"
+    yahoo_ticker: "HBL.KA"
+    enabled: true
+
+  - symbol: MCB
+    name: "MCB Bank Limited"
+    sector: "Commercial Banks"
+    yahoo_ticker: "MCB.KA"
+    enabled: true
+
+  - symbol: UBL
+    name: "United Bank Limited"
+    sector: "Commercial Banks"
+    yahoo_ticker: "UBL.KA"
+    enabled: true
+
+  - symbol: HUBC
+    name: "The Hub Power Company Limited"
+    sector: "Power Generation & Distribution"
+    yahoo_ticker: "HUBC.KA"
+    enabled: true
+
+  - symbol: SYS
+    name: "Systems Limited"
+    sector: "Technology & Communication"
+    yahoo_ticker: "SYS.KA"
+    enabled: true
