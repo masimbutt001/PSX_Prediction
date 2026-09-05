@@ -1,0 +1,818 @@
+# Codex Build Instructions — PSX Stock Market Prediction Platform
+
+## 1. Role
+
+You are the lead software engineer responsible for building a production-quality Pakistan Stock Exchange (PSX) forecasting and research application.
+
+Your job is to build the system incrementally.
+
+Do not attempt to implement the entire application at once.
+
+Every development step must:
+
+1. have a clearly defined objective;
+2. produce working code;
+3. include automated tests;
+4. include validation commands;
+5. preserve previously working functionality;
+6. be independently reviewable;
+7. stop at the end of the step and report the result before proceeding to the next major step.
+
+The application is initially a research and decision-support platform, not an automated trading system.
+
+The system must never represent its forecasts as guaranteed investment outcomes.
+
+---
+
+# 2. Primary Goal
+
+Build a local-first application capable of:
+
+- collecting historical Pakistan Stock Exchange (PSX) data;
+- periodically updating stock-market data incrementally;
+- storing data locally in high-performance formats (Parquet + DuckDB);
+- tracking corporate actions (dividends, bonus shares, rights issues) and maintaining adjusted prices;
+- collecting company announcements and financial news;
+- collecting relevant macroeconomic data (USD/PKR, SBP Policy Rate, KIBOR, CPI);
+- generating structured technical and statistical features;
+- training multiple prediction models (baselines, tree ensembles, and future architectures);
+- performing walk-forward backtesting without look-ahead bias;
+- respecting PSX market microstructure (circuit breakers, lock limits, and transaction costs);
+- comparing models against simple baselines and market benchmarks (KSE-100);
+- generating stock forecasts with explainable factors;
+- recording prediction history for calibration and drift tracking;
+- presenting predictions, metrics, and explanations through an application dashboard.
+
+The first version will only support a small configurable universe of PSX stocks (e.g., KSE-30 / KSE-100 liquid blue chips).
+
+Do not attempt to ingest all PSX-listed securities at once.
+
+---
+
+# 3. Development Philosophy
+
+Use the following rule throughout the project:
+
+> Build → Test → Validate → Document → Proceed
+
+Never implement multiple major subsystems without testing the previous subsystem first.
+
+Prefer simple, reliable architecture over unnecessary complexity.
+
+Avoid premature optimization.
+
+Avoid deep-learning models until simpler models and the complete evaluation pipeline are functioning correctly.
+
+---
+
+# 4. Initial Technology Stack
+
+Use Python as the primary language.
+
+Preferred stack:
+
+- **Python 3.12+**
+- **uv** as the primary package and project manager (with `pyproject.toml`)
+- **Pandas** and/or **Polars** for tabular transformations
+- **NumPy** for numerical computations
+- **DuckDB** for local analytical SQL querying
+- **Parquet** for fast, columnar disk storage
+- **Pydantic** & **pydantic-settings** for schema and configuration validation
+- **HTTPX** for async/sync HTTP requests
+- **yfinance** for baseline PSX OHLCV data (`.KA` tickers on Yahoo Finance)
+- **BeautifulSoup** only where permitted and necessary (e.g., parsing official DPS announcements)
+- **feedparser** for financial RSS news feeds
+- **scikit-learn** for baseline and linear models
+- **XGBoost** & **LightGBM** for tree-based modeling
+- **PyTorch** only in later phases (Phase 9+)
+- **MLflow** for experiment tracking
+- **FastAPI** for backend APIs
+- **Streamlit** for the initial dashboard
+- **pytest** for comprehensive unit and integration testing
+- **Ruff** for high-speed linting and formatting
+- **mypy** for static type checking where practical
+
+Prefer typed Python. Avoid unnecessary frameworks.
+
+---
+
+# 5. High-Level Architecture
+
+The system follows a strictly decoupled, layered architecture:
+
+```text
+External Data Sources (PSX DPS Portal, Yahoo Finance .KA, SBP, News)
+        |
+        v
+Collectors Layer (Common Interface, Retries, Validation)
+        |
+        v
+Raw Data Layer (Immutable source storage: JSON/Parquet)
+        |
+        v
+Validation & Cleaning Layer (OHLC Checks, Lock Limits, Corporate Actions)
+        |
+        v
+Processed Data Layer (Normalized Parquet + DuckDB Catalog)
+        |
+        v
+Feature Engineering (Technical Indicators, Point-in-Time Features)
+        |
+        v
+Feature Store (Deterministic, Versioned Datasets)
+        |
+        +-------------------+
+        |                   |
+        v                   v
+Machine Learning        News/NLP
+Models                  Models
+        |                   |
+        +---------+---------+
+                  |
+                  v
+              Ensemble
+                  |
+                  v
+             Backtester (Walk-Forward, Circuit Breakers, Friction/Costs)
+                  |
+                  v
+             Prediction Engine
+                  |
+          +-------+-------+
+          |               |
+          v               v
+       FastAPI         Streamlit Dashboard
+```
+
+Keep boundaries between these components clear.
+
+---
+
+# 6. Local Project Structure
+
+Standardize on the following clean package structure:
+
+```text
+psx_predictor/
+│
+├── README.md
+├── pyproject.toml
+├── .env.example
+├── .gitignore
+│
+├── config/
+│   ├── stocks.yaml
+│   └── settings.yaml
+│
+├── data/
+│   ├── raw/
+│   │   ├── prices/
+│   │   ├── news/
+│   │   ├── announcements/
+│   │   └── macro/
+│   ├── processed/
+│   ├── features/
+│   ├── predictions/
+│   └── models/
+│
+├── src/
+│   └── psx_predictor/
+│       ├── __init__.py
+│       ├── config/
+│       ├── collectors/
+│       ├── storage/
+│       ├── processing/
+│       ├── features/
+│       ├── models/
+│       ├── news/
+│       ├── macro/
+│       ├── backtesting/
+│       ├── predictions/
+│       ├── api/
+│       └── dashboard/
+│
+├── tests/
+│   ├── unit/
+│   ├── integration/
+│   └── fixtures/
+│
+├── scripts/
+│
+└── docs/
+    ├── architecture.md
+    ├── data-model.md
+    ├── modeling.md
+    ├── backtesting.md
+    └── phases/
+```
+
+Use a proper Python package under `src/`.
+
+---
+
+# 7. Configurable Stock Universe
+
+Never hard-code supported stocks throughout the codebase.
+
+Maintain `config/stocks.yaml`:
+
+```yaml
+stocks:
+  - symbol: OGDC
+    name: "Oil & Gas Development Company Limited"
+    sector: "Oil & Gas Exploration"
+    yahoo_ticker: "OGDC.KA"
+    enabled: true
+
+  - symbol: PPL
+    name: "Pakistan Petroleum Limited"
+    sector: "Oil & Gas Exploration"
+    yahoo_ticker: "PPL.KA"
+    enabled: true
+
+  - symbol: MARI
+    name: "Mari Energies Limited"
+    sector: "Oil & Gas Exploration"
+    yahoo_ticker: "MARI.KA"
+    enabled: true
+
+  - symbol: HBL
+    name: "Habib Bank Limited"
+    sector: "Commercial Banks"
+    yahoo_ticker: "HBL.KA"
+    enabled: true
+
+  - symbol: UBL
+    name: "United Bank Limited"
+    sector: "Commercial Banks"
+    yahoo_ticker: "UBL.KA"
+    enabled: true
+
+  - symbol: MCB
+    name: "MCB Bank Limited"
+    sector: "Commercial Banks"
+    yahoo_ticker: "MCB.KA"
+    enabled: true
+
+  - symbol: FFC
+    name: "Fauji Fertilizer Company Limited"
+    sector: "Fertilizer"
+    yahoo_ticker: "FFC.KA"
+    enabled: true
+
+  - symbol: ENGRO
+    name: "Engro Corporation Limited"
+    sector: "Fertilizer / Conglomerate"
+    yahoo_ticker: "ENGRO.KA"
+    enabled: true
+
+  - symbol: LUCK
+    name: "Lucky Cement Limited"
+    sector: "Cement"
+    yahoo_ticker: "LUCK.KA"
+    enabled: true
+
+  - symbol: HUBC
+    name: "Hub Power Company Limited"
+    sector: "Power Generation & Distribution"
+    yahoo_ticker: "HUBC.KA"
+    enabled: true
+```
+
+The application must allow symbols to be added, modified, or disabled without source code modification.
+
+---
+
+# 8. Data Principles & Storage Architecture
+
+Maintain distinct storage layers:
+
+### Raw data
+Raw downloaded information must be preserved in immutable form without transformation wherever practical:
+```text
+data/raw/prices/
+data/raw/news/
+data/raw/announcements/
+data/raw/macro/
+```
+
+### Processed data
+Normalized, validated, and deduplicated records:
+```text
+data/processed/prices/
+data/processed/corporate_actions/
+```
+
+### Features
+Machine-learning-ready datasets:
+```text
+data/features/
+```
+
+### Predictions
+Store every generated forecast permanently:
+```text
+data/predictions/
+```
+
+Use **Parquet** for large structured datasets.
+Use **DuckDB** as the local analytical and query layer over Parquet files.
+
+---
+
+# 9. Price Data Schema & PSX Market Microstructure
+
+Normalized daily stock records must support:
+
+```text
+symbol                      VARCHAR
+trade_date                  DATE
+open                        DOUBLE
+high                        DOUBLE
+low                         DOUBLE
+close                       DOUBLE
+adjusted_close              DOUBLE
+volume                      BIGINT
+dividend_amount             DOUBLE DEFAULT 0.0
+split_ratio                 DOUBLE DEFAULT 1.0
+is_upper_lock               BOOLEAN DEFAULT FALSE
+is_lower_lock               BOOLEAN DEFAULT FALSE
+source                      VARCHAR
+collected_at                TIMESTAMP
+```
+
+### Critical PSX Adjustments
+
+1. **Ex-Dividend & Corporate Actions Adjustment:**
+   - PSX is a high-dividend-yield market. Unadjusted close prices create artificial price drops on ex-dividend and ex-bonus dates.
+   - Both raw `close` and `adjusted_close` must be maintained. Features and return calculations must utilize dividend/split-adjusted prices to prevent false breakdown signals.
+
+2. **Circuit Breakers & Upper/Lower Locks:**
+   - PSX implements daily price limits (typically ±7.5% or 1 PKR, whichever is higher).
+   - Flag sessions where a stock hits **Upper Lock** (`high == low == close` at +7.5%) or **Lower Lock** (-7.5%).
+   - In trading simulations and backtests, buy orders cannot execute at the close of an upper lock, and sell orders cannot execute at the close of a lower lock.
+
+### Data Validation Rules:
+- symbol exists in configured universe;
+- trade_date is valid;
+- OHLC values are positive;
+- high >= open, high >= close, high >= low;
+- low <= open, low <= close;
+- volume >= 0;
+- duplicate symbol/date rows are strictly rejected;
+- log all rejected invalid rows without silently corrupting data.
+
+---
+
+# 10. Critical Time-Series Rule & Look-Ahead Prevention
+
+Never perform random train/test splitting for financial time-series data.
+
+Financial time-series data must use **strict chronological splitting** and **walk-forward validation**:
+- Expanding-window evaluation
+- Rolling-window evaluation
+
+Future information must never influence historical model features:
+- No future prices or forward-peeking moving averages.
+- No future macroeconomic indicators (use release dates, not observation dates).
+- No news published after session close/prediction timestamp.
+- No retrospective data revisions.
+
+Prevent look-ahead bias throughout every feature and transformation.
+
+---
+
+# 11. News & Market Session Alignment (PSX Calendar)
+
+Every news or announcement record must contain:
+
+```text
+id                          VARCHAR
+source                      VARCHAR
+headline                    VARCHAR
+body                        VARCHAR
+published_at                TIMESTAMP
+collected_at                TIMESTAMP
+company_symbols             LIST[VARCHAR]
+event_type                  VARCHAR
+sentiment                   DOUBLE
+relevance                   DOUBLE
+usable_from                 TIMESTAMP
+session_target_date         DATE
+```
+
+### PSX Trading Hours & Friday Split Schedule:
+- **Monday – Thursday:** 09:15 PKT to 15:30 PKT (single continuous session).
+- **Friday Session 1:** 09:15 PKT to 12:00 PKT.
+- **Friday Prayer Intermission:** 12:00 PKT to 14:30 PKT (Market Closed).
+- **Friday Session 2:** 14:30 PKT to 16:30 PKT.
+
+### News Alignment Rules (`usable_from`):
+- News published during market hours is aligned to the earliest subsequent trading session or the current session if received before cut-off.
+- News published during Friday prayer intermission (12:00–14:30 PKT) becomes `usable_from` Friday Session 2.
+- News published after market close (15:30 Mon-Thu, 16:30 Fri) or over the weekend is aligned to the **next trading day's open**.
+
+---
+
+# 12. Prediction Targets
+
+Do not attempt to predict an exact stock price directly.
+
+Initial prediction targets:
+
+### Target A — Next-Session Direction (Binary or 3-Class)
+- **Binary Direction:**
+  ```text
+  1 = next adjusted close > current adjusted close
+  0 = next adjusted close <= current adjusted close
+  ```
+- **Thresholded 3-Class Target (Noise & Friction Filter):**
+  To filter out micro-noise within the bid-ask spread and transaction costs (~0.25%):
+  ```text
+  UP      = return > +0.75%
+  NEUTRAL = -0.75% <= return <= +0.75%
+  DOWN    = return < -0.75%
+  ```
+
+### Target B — Five-Session Future Return
+```text
+(adjusted_close[t+5] / adjusted_close[t]) - 1
+```
+
+All targets must be generated with strict exclusion of future observations from the input feature vector.
+
+---
+
+# 13. First Models & Modeling Progression
+
+Implement models in the following sequence:
+
+### Step 1: Baselines
+1. Majority-class classifier
+2. Previous-day-direction naive baseline
+3. Simple moving-average crossover strategy
+4. Regularized Logistic Regression (Ridge/Lasso)
+
+### Step 2: Tabular ML Models
+5. Random Forest Classifier/Regressor
+6. XGBoost Classifier/Regressor
+7. LightGBM (where appropriate)
+
+### Step 3: Deep Learning (Only after Phase 10 is complete and stable)
+8. LSTM / GRU recurrent models
+9. Temporal Convolutional Networks (TCN)
+10. Temporal Transformers
+
+Do not implement deep learning in early phases.
+
+---
+
+# 14. Model Evaluation & Backtesting Metrics
+
+### Classification Metrics:
+- Accuracy, Balanced Accuracy
+- Precision, Recall, F1-Score (macro & weighted)
+- ROC-AUC & Precision-Recall AUC
+- Brier Score (probability calibration)
+- Confusion Matrix
+
+### Regression Metrics:
+- Mean Absolute Error (MAE)
+- Root Mean Squared Error (RMSE)
+- Mean Directional Accuracy (MDA)
+- $R^2$ Score
+
+### Realistic PSX Trading Simulation Metrics:
+- Total Return & Annualized Return (CAGR)
+- Sharpe Ratio & Sortino Ratio
+- Maximum Drawdown (MDD) & Drawdown Duration
+- Win Rate & Profit Factor
+- Turnover & Trade Count
+- **Slippage & Transaction Costs:** Deduct estimated PSX friction (~0.15% broker commission + SECP/CDC/NCCPL charges + Capital Gains Tax).
+- **Execution Filter:** Reject hypothetical fills on stocks locked at upper limit (for buy) or lower limit (for sell).
+
+Compare models against:
+- Buy and Hold
+- KSE-100 Benchmark Index
+- Simple SMA baseline
+- Naive direction baseline
+
+---
+
+# 15. Feature Engineering
+
+Implement modular feature generators:
+
+1. **Price & Return Features:**
+   - 1-day, 3-day, 5-day, 10-day, 20-day log and percentage returns.
+2. **Moving Averages & Oscillators:**
+   - SMA / EMA (5, 10, 20, 50, 100, 200)
+   - RSI (14-period)
+   - MACD (12, 26, 9) & MACD histogram
+   - Rate of Change (ROC)
+3. **Volatility Features:**
+   - Rolling standard deviation (10, 20, 60 days)
+   - Average True Range (ATR)
+   - Bollinger Bands & Bollinger Band Width
+4. **Volume Features:**
+   - Volume SMA & relative volume (Volume / 20-day Volume SMA)
+   - On-Balance Volume (OBV)
+   - Volume change percentage
+5. **PSX Relative Market Features:**
+   - Stock return vs. KSE-100 return
+   - Rolling beta vs. KSE-100 (60-day window)
+   - Sector relative strength
+
+All feature computations must be deterministic, unit-tested, and strictly free of look-ahead bias.
+
+---
+
+# 16. News Features
+
+Do not feed unstructured text directly into the price prediction model.
+
+Construct structured news signals:
+- Sentiment score (-1.0 to +1.0)
+- News velocity (count of articles in last 24h, 72h)
+- Positive / negative headline count
+- Official corporate announcement indicator
+- Categorized event flags (earnings, dividend, bonus, regulatory, discovery, interest rate)
+- NLP processing must remain a standalone, decoupled subsystem.
+
+---
+
+# 17. Macro Features
+
+Collect key Pakistan macroeconomic indicators:
+- USD/PKR spot exchange rate
+- SBP Monetary Policy Rate
+- 6-Month KIBOR
+- CPI Inflation (Monthly YoY / MoM)
+- FX Reserves (State Bank & Commercial Banks)
+- Brent Crude Oil Price (crucial for PSX E&P and Fertilizer sectors)
+- International Gold Price
+- KSE-100 and KSE-30 Index levels
+
+Macro features must be aligned by **announcement/release timestamp**, not period end date, to eliminate look-ahead bias.
+
+---
+
+# 18. Model Explainability
+
+Predictions must provide clear diagnostic rationales:
+
+```json
+{
+  "symbol": "OGDC",
+  "prediction_date": "2026-09-08",
+  "next_day_up_probability": 0.67,
+  "expected_5d_return": 0.021,
+  "signal": "MODERATE_BUY",
+  "confidence": 0.65,
+  "key_drivers": [
+    "20-day momentum above 70th percentile",
+    "Trading volume 1.4x 20-day average",
+    "Brent crude rose +2.1% in previous session"
+  ],
+  "model_version": "xgb_v1.0.0"
+}
+```
+
+Explanations must come from SHAP values, feature importance, or explicit rule drivers—never fabricated text.
+
+---
+
+# 19. Logging & Observability
+
+Use structured logging (loguru or Python standard logging with JSON formatter):
+- Collector start/completion and download counts
+- Validation errors and rejected row diagnostics
+- Training run execution time, parameters, and evaluation metrics
+- Inference execution and output signals
+- Never log sensitive credentials.
+
+---
+
+# 20. Reproducibility & Experiment Tracking
+
+Track every experiment:
+- Model type and hyperparameters
+- Training window start and end dates
+- Test period
+- Feature set version/hash
+- Stock symbol
+- Software version & random seed
+- Full metrics payload
+- Use MLflow once the baseline modeling pipeline is operational.
+
+---
+
+# 21. Testing Standards
+
+Every component must include automated tests:
+
+### Unit Tests:
+- Configuration parsing and schema validation
+- Stock symbol validation
+- OHLC sanity checks (high >= open, low <= close, etc.)
+- Duplicate detection and atomic write behavior
+- Technical feature calculations against precomputed fixtures
+- Target generation and alignment
+- Chronological walk-forward split integrity
+
+### Integration Tests:
+- End-to-end pipeline on small fixture datasets:
+  `fixture data` $\to$ `validate` $\to$ `engineer features` $\to$ `train baseline` $\to$ `predict`
+- Tests must execute offline with fast fixtures and zero live external network dependencies.
+- Live integration tests must be isolated with `@pytest.mark.external`.
+
+---
+
+# 22. Data Collector Design
+
+Every external source implements a common abstract collector interface:
+
+```python
+from abc import ABC, abstractmethod
+from typing import Any, Dict
+
+class BaseCollector(ABC):
+    @abstractmethod
+    def fetch(self, symbol: str, start_date: str, end_date: str) -> Any:
+        pass
+
+    @abstractmethod
+    def validate(self, raw_data: Any) -> bool:
+        pass
+
+    @abstractmethod
+    def normalize(self, raw_data: Any) -> Dict[str, Any]:
+        pass
+
+    @abstractmethod
+    def save_raw(self, raw_data: Any, path: str) -> None:
+        pass
+```
+
+### Primary Sources for PSX:
+- **Historical & Daily EOD:** Yahoo Finance API (`.KA` suffix) & PSX Data Portal (`dps.psx.com.pk`).
+- **Announcements:** PSX DPS portal announcements.
+- **Macro:** State Bank of Pakistan (SBP) & Fred / Yahoo for oil/gold.
+
+Collectors must incorporate exponential backoff retries, strict timeouts, and atomic file updates.
+
+---
+
+# 23. Failure Handling & Atomic Writes
+
+The platform must handle network interruptions, rate limits, schema changes, and partial payloads gracefully:
+- Never corrupt existing local Parquet datasets when an update fails.
+- Use temporary file writes followed by atomic renames.
+- Isolate symbol failures: if `PPL` fails to update, `OGDC` and `HBL` must still proceed.
+
+---
+
+# 24. Command Line Interface (CLI)
+
+Provide comprehensive CLI commands using **Typer**:
+
+```bash
+# Configuration & health
+psx config show
+psx health check
+
+# Data management
+psx data init
+psx data bootstrap --years 5
+psx data update
+psx data validate
+
+# Feature store
+psx features build
+
+# Modeling & Evaluation
+psx model train --model xgboost
+psx model evaluate --walk-forward
+psx backtest --symbol OGDC
+
+# Predictions
+psx predict --symbol OGDC
+psx predict --all
+```
+
+---
+
+# 25. Complete 21-Phase Development Roadmap
+
+The platform will be built in the following strict sequential phases:
+
+- **PHASE 0: Repository Bootstrap** — Package layout, uv/pyproject.toml, configuration system, stocks.yaml, Ruff, pytest, initial CLI.
+- **PHASE 1: Local Storage Layer** — Parquet read/write, DuckDB analytical connection, schema definition, atomic writes, validation fixtures.
+- **PHASE 2: Historical Price Collector** — Yahoo Finance (`.KA`) and DPS PSX collector interface, normalization, mock-tested retries.
+- **PHASE 3: Historical Data Bootstrap** — 5-year multi-stock initial ingestion, data quality reporting, duplicate/missing data handling.
+- **PHASE 4: Incremental Daily Updates** — Idempotent daily updates, latest-date detection, symbol-isolated failure handling.
+- **PHASE 5: Price Feature Engineering** — Returns, SMA/EMA, RSI, MACD, ATR, Bollinger, volume indicators, deterministic tests.
+- **PHASE 6: Prediction Targets** — Next-session direction (binary & 3-class), 5-day future return, strict leakage-free alignment tests.
+- **PHASE 7: Baseline Models** — Majority class, naive previous-direction, SMA strategy, Logistic Regression with chronological evaluation.
+- **PHASE 8: Walk-Forward Backtester** — Rolling/expanding cross-validation, PSX transaction costs, circuit breaker lock-limit fill checks.
+- **PHASE 9: Tree-Based ML Models** — Random Forest and XGBoost with automated walk-forward comparison tables.
+- **PHASE 10: Prediction Registry** — Permanent forecast logging (`data/predictions/`), calibration, and realization auditing.
+- **PHASE 11: News Collection** — Official PSX announcements and financial RSS feed collectors, timestamp tracking.
+- **PHASE 12: News Classification & NLP** — Symbol extraction, sentiment scoring, and event categorization.
+- **PHASE 13: News/Market Alignment** — PSX trading hours & Friday split schedule session alignment, zero-leakage tests.
+- **PHASE 14: Macroeconomic Data** — SBP policy rate, KIBOR, USD/PKR, CPI, Brent crude oil ingestion.
+- **PHASE 15: Combined Multi-Modal Feature Set** — Ablation testing: price vs. price+news vs. price+macro vs. combined.
+- **PHASE 16: Ensemble Model** — Meta-model combining price, news, and macro sub-models with walk-forward weights.
+- **PHASE 17: FastAPI Backend** — REST endpoints for stocks, historical data, features, predictions, and backtest results.
+- **PHASE 18: Streamlit Dashboard** — Interactive market overview, stock charts, predictions with explainability, and backtest visualizer.
+- **PHASE 19: Scheduler & Automation** — Scheduled daily EOD ingestion, feature regeneration, and inference pipeline.
+- **PHASE 20: Model Monitoring & Drift Detection** — Rolling prediction accuracy, Brier score calibration, and feature drift alerts.
+
+---
+
+# 26. Required Behavior After Every Phase
+
+After completing each phase:
+1. Run all unit and integration tests (`pytest`).
+2. Run code formatting and linting (`ruff check .`).
+3. Verify backward compatibility with previously built phases.
+4. Show modified and created files.
+5. Summarize architectural decisions and known limitations.
+6. Report the completion format specified in Section 33.
+7. Stop and wait for user review before starting the next phase.
+
+---
+
+# 27. Test Discipline
+
+Every test must test actual invariants and numerical correctness:
+- No dummy `assert function() is not None` tests.
+- Verify exact hand-calculated financial metrics on fixture data.
+- Explicitly test for look-ahead bias and off-by-one errors.
+- Test failure cases: timeouts, corrupted files, invalid schemas, missing dates.
+
+---
+
+# 28. No Look-Ahead Bias Invariant
+
+Every data transformation must satisfy:
+> *Would this information have been known with 100% certainty at the exact moment the prediction was made?*
+
+If not, using it is strictly prohibited.
+
+---
+
+# 29. No Silent Data Repair
+
+Never silently replace missing values, interpolate prices, forward-fill arbitrary stock prices, or remove outliers without explicit, testable, logged rules. Original raw data must always remain untouched.
+
+---
+
+# 30. Documentation Standards
+
+Maintain project documentation under `docs/`:
+- `docs/architecture.md` — System architecture and component interactions.
+- `docs/data-model.md` — Storage schemas, DuckDB tables, and Parquet layouts.
+- `docs/modeling.md` — Feature sets, target definitions, and model specifications.
+- `docs/backtesting.md` — Walk-forward methodology, transaction cost assumptions, and metrics.
+- `docs/phases/` — Dedicated requirement and implementation specifications for each individual phase (Phase 0 to Phase 20).
+
+---
+
+# 31. Security Standards
+
+- Never hard-code credentials or commit API keys.
+- Store sensitive tokens in `.env` (git-ignored).
+- Validate all incoming web responses and data schemas with Pydantic.
+- Do not deserialize untrusted pickle files.
+
+---
+
+# 32. Financial Safety & Scope Disclaimer
+
+This application is strictly for research, quantitative analysis, and decision support.
+- No automatic broker execution.
+- No automated live trading.
+- No claims of guaranteed investment returns.
+- All predictions must clearly display confidence bounds and uncertainty estimates.
+
+---
+
+# 33. First Instruction: Begin With Phase 0 Only
+
+Begin with **PHASE 0 only**.
+
+Do not implement data collection, machine learning models, APIs, or dashboards yet.
+
+Your first task is:
+1. Inspect the repository.
+2. Preserve any existing work.
+3. Create the Phase 0 project structure.
+4. Configure dependencies using `uv` and `pyproject.toml`.
+5. Create configuration loading with Pydantic (`stocks.yaml`, `settings.yaml`).
+6. Build a minimal CLI command to inspect configuration (`psx config show`).
+7. Add unit tests and verify they pass (`pytest`).
+8. Run linting (`ruff check .`) and resolve all issues.
+9. Produce the Phase 0 completion report.
+
+Do not proceed to Phase 1 until Phase 0 is reviewed and approved.
