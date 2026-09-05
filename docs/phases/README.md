@@ -11,11 +11,11 @@ This directory contains the detailed engineering specifications, test plans, and
 
 ## Phase Matrix
 
-| Phase | Specification Document | Key Objective | Output Artifacts |
-| :--- | :--- | :--- | :--- |
-| **00** | [phase_00_bootstrap.md](file:///d:/Development/PSX_Prediction/docs/phases/phase_00_bootstrap.md) | Repository & Tooling Bootstrap | `pyproject.toml`, `config/stocks.yaml`, CLI `psx config show` |
-| **01** | [phase_01_storage.md](file:///d:/Development/PSX_Prediction/docs/phases/phase_01_storage.md) | Local Storage & DuckDB Catalog | Parquet I/O, DuckDB connection, Atomic writes, Schema validation |
-| **02** | [phase_02_collector.md](file:///d:/Development/PSX_Prediction/docs/phases/phase_02_collector.md) | Historical Price Collector Interface | `BaseCollector`, Yahoo Finance (`.KA`) & DPS collectors, retry logic |
+| Phase | Specification Document | Walkthrough Document | Key Objective | Output Artifacts |
+| :--- | :--- | :--- | :--- | :--- |
+| **00** | [phase_00_bootstrap.md](phase_00_bootstrap.md) | [phase_00_walkthrough.md](walkthroughs/phase_00_walkthrough.md) | Repository & Tooling Bootstrap | `pyproject.toml`, `config/stocks.yaml`, CLI `psx config show` |
+| **01** | [phase_01_storage.md](phase_01_storage.md) | [phase_01_walkthrough.md](walkthroughs/phase_01_walkthrough.md) | Local Storage & DuckDB Catalog | Parquet I/O, DuckDB connection, Atomic writes, Schema validation |
+| **02** | [phase_02_collector.md](phase_02_collector.md) | *Pending* | Historical Price Collector Interface | `BaseCollector`, Yahoo Finance (`.KA`) & DPS collectors, retry logic |
 | **03** | [phase_03_data_bootstrap.md](file:///d:/Development/PSX_Prediction/docs/phases/phase_03_data_bootstrap.md) | 5-Year Historical Data Ingestion | Multi-year Parquet dataset, Data quality report |
 | **04** | [phase_04_incremental_updates.md](file:///d:/Development/PSX_Prediction/docs/phases/phase_04_incremental_updates.md) | Incremental Daily Ingestion | Idempotent daily updates, Latest-date detection |
 | **05** | [phase_05_price_features.md](file:///d:/Development/PSX_Prediction/docs/phases/phase_05_price_features.md) | Deterministic Price Features | Returns, MAs, RSI, MACD, Bollinger, ATR, Volume indicators |
