@@ -19,6 +19,9 @@ dependencies = [
     "typer>=0.12.0",
     "rich>=13.7.0",
     "loguru>=0.7.2",
+    "pandas>=2.2.0",
+    "pyarrow>=15.0.0",
+    "duckdb>=0.10.0",
 ]
 
 [project.optional-dependencies]
@@ -54,3 +57,9 @@ minversion = "8.0"
 addopts = "-ra -q"
 testpaths = ["tests"]
 pythonpath = ["src"]
+
+[tool.mypy]
+python_version = "3.12"
+warn_return_any = false
+warn_unused_configs = true
+ignore_missing_imports = true
