@@ -59,3 +59,9 @@ stocks:
     sector: "Technology & Communication"
     yahoo_ticker: "SYS.KA"
     enabled: true
+
+  - symbol: GGL
+    name: "Ghani Global Glass Ltd."
+    sector: "GLASS & CERAMICS"
+    yahoo_ticker: "GGL.KA"
+    enabled: true
