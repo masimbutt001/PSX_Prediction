@@ -368,5 +368,203 @@ def data_fetch(
     console.print(preview_table)
 
 
+@data_app.command("bootstrap")
+def data_bootstrap(
+    years: Annotated[
+        int,
+        typer.Option("--years", "-y", help="Historical lookback window in years"),
+    ] = 5,
+    symbols: Annotated[
+        Optional[str],
+        typer.Option(
+            "--symbols",
+            "-s",
+            help="Comma-separated symbols (e.g. 'OGDC,PPL'). If omitted, runs all enabled.",
+        ),
+    ] = None,
+    source: Annotated[
+        str,
+        typer.Option(
+            "--source",
+            help="Data source to use: 'composite', 'scs', 'yahoo', or 'dps'",
+        ),
+    ] = "composite",
+    dry_run: Annotated[
+        bool,
+        typer.Option("--dry-run", help="Validate without writing files to disk"),
+    ] = False,
+    overwrite: Annotated[
+        bool,
+        typer.Option("--overwrite/--no-overwrite", help="Overwrite existing processed datasets"),
+    ] = True,
+) -> None:
+    """Bootstrap multi-year historical market data for configured PSX symbols."""
+    from psx_predictor.collectors.base import BaseCollector
+    from psx_predictor.collectors.composite import CompositeCollector
+    from psx_predictor.collectors.dps_collector import DPSCollector
+    from psx_predictor.collectors.scs_collector import SCSTradeCollector
+    from psx_predictor.collectors.yahoo_collector import YahooCollector
+    from psx_predictor.processing.pipeline import DataBootstrapPipeline
+
+    collector: BaseCollector
+    src_lower = source.lower()
+    if src_lower == "scs":
+        collector = SCSTradeCollector()
+    elif src_lower == "yahoo":
+        collector = YahooCollector()
+    elif src_lower == "dps":
+        collector = DPSCollector()
+    elif src_lower == "composite":
+        collector = CompositeCollector()
+    else:
+        console.print(
+            f"[bold red]Unknown source:[/bold red] '{source}'. "
+            "Choose 'composite', 'scs', 'yahoo', or 'dps'."
+        )
+        raise typer.Exit(code=1)
+
+    target_syms = [s.strip().upper() for s in symbols.split(",") if s.strip()] if symbols else None
+
+    console.print(
+        f"Starting historical bootstrap: [cyan]{years} years[/cyan] lookback | "
+        f"Source: [yellow]'{collector.source_name}'[/yellow] | "
+        f"Mode: {'[magenta]DRY-RUN[/magenta]' if dry_run else '[green]PERSIST[/green]'}"
+    )
+
+    pipeline = DataBootstrapPipeline(collector=collector)
+    universe_result = pipeline.bootstrap_universe(
+        symbols=target_syms,
+        years=years,
+        dry_run=dry_run,
+        overwrite=overwrite,
+    )
+
+    # Render summary table
+    table = Table(title="Historical Bootstrap Execution Results", box=box.ROUNDED)
+    table.add_column("Symbol", style="bold cyan")
+    table.add_column("Status", justify="center")
+    table.add_column("Records", justify="right")
+    table.add_column("Date Span", justify="center")
+    table.add_column("Locks (U/L)", justify="center")
+    table.add_column("Dividends", justify="right")
+    table.add_column("Duration", justify="right")
+
+    for sym, res in universe_result.symbol_results.items():
+        if res.status == "SUCCESS":
+            status_style = "[bold green]SUCCESS[/bold green]"
+        elif res.status == "SKIPPED":
+            status_style = "[dim yellow]SKIPPED[/dim yellow]"
+        else:
+            status_style = f"[bold red]FAILED[/bold red] ({res.error_message})"
+
+        span_str = f"{res.start_date} -> {res.end_date}" if res.start_date else "N/A"
+        locks_str = f"{res.upper_locks} / {res.lower_locks}"
+        table.add_row(
+            sym,
+            status_style,
+            str(res.record_count),
+            span_str,
+            locks_str,
+            str(res.dividend_events),
+            f"{res.duration_seconds:.2f}s",
+        )
+
+    console.print(table)
+
+    summary_panel = Panel(
+        f"[bold]Total Symbols:[/bold] {universe_result.total_symbols}  |  "
+        f"[bold green]Succeeded:[/bold green] {universe_result.successful_symbols}  |  "
+        f"[bold yellow]Skipped:[/bold yellow] {universe_result.skipped_symbols}  |  "
+        f"[bold red]Failed:[/bold red] {universe_result.failed_symbols}\n"
+        f"[bold cyan]Total Records Ingested:[/bold cyan] {universe_result.total_records:,}",
+        title="Bootstrap Summary",
+        border_style="cyan",
+    )
+    console.print(summary_panel)
+
+    if dry_run:
+        console.print("[dim yellow]Dry run active: No files saved to disk.[/dim yellow]")
+    else:
+        manifest_file = pipeline.storage_paths["processed_prices"] / "bootstrap_manifest.json"
+        if manifest_file.exists():
+            console.print(f"[bold green]Saved run manifest to:[/bold green] {manifest_file}")
+
+
+@data_app.command("audit")
+def data_audit(
+    symbols: Annotated[
+        Optional[str],
+        typer.Option(
+            "--symbols",
+            "-s",
+            help="Comma-separated symbols to audit. If omitted, audits all processed datasets.",
+        ),
+    ] = None,
+    max_gap_days: Annotated[
+        int,
+        typer.Option(
+            "--max-gap-days",
+            "-g",
+            help="Calendar days threshold to flag an anomalous gap (default: 4)",
+        ),
+    ] = 4,
+    json_output: Annotated[
+        Optional[Path],
+        typer.Option("--json-output", help="Optional path to write audit report as JSON"),
+    ] = None,
+) -> None:
+    """Audit processed datasets for completeness, trading calendar gaps, and anomalies."""
+    from psx_predictor.processing.quality_report import DataQualityAuditor
+
+    target_syms = [s.strip().upper() for s in symbols.split(",") if s.strip()] if symbols else None
+    auditor = DataQualityAuditor()
+
+    # Single symbol audit
+    if target_syms and len(target_syms) == 1:
+        sym = target_syms[0]
+        report = auditor.audit_symbol(sym, max_gap_days=max_gap_days)
+        console.print(report.to_rich_table())
+
+        if report.gaps:
+            gap_table = Table(
+                title=f"Detected Gaps (> {max_gap_days} days) for {sym}", box=box.SIMPLE_HEAVY
+            )
+            gap_table.add_column("Gap Interval", style="cyan")
+            gap_table.add_column("Calendar Days", justify="right")
+            gap_table.add_column("Missing Weekdays", justify="right", style="bold red")
+
+            for g in report.gaps:
+                gap_table.add_row(
+                    f"{g.start_date} to {g.end_date}", str(g.calendar_days), str(g.missing_weekdays)
+                )
+            console.print(gap_table)
+
+        if json_output:
+            with open(json_output, "w", encoding="utf-8") as f:
+                json.dump(report.to_dict(), f, indent=2)
+            console.print(f"[bold green]Saved JSON report to:[/bold green] {json_output}")
+        return
+
+    # Multi-symbol universe audit
+    universe_report = auditor.audit_universe(symbols=target_syms, max_gap_days=max_gap_days)
+    console.print(universe_report.to_rich_table())
+
+    summary_panel = Panel(
+        f"[bold]Total Audited:[/bold] {universe_report.total_symbols}  |  "
+        f"[bold green]Healthy:[/bold green] {universe_report.healthy_count}  |  "
+        f"[bold yellow]Warning:[/bold yellow] {universe_report.warning_count}  |  "
+        f"[bold red]Critical:[/bold red] {universe_report.critical_count}\n"
+        f"[bold cyan]Total Analyzed Sessions:[/bold cyan] {universe_report.total_sessions:,}",
+        title="Audit Universe Summary",
+        border_style="cyan",
+    )
+    console.print(summary_panel)
+
+    if json_output:
+        with open(json_output, "w", encoding="utf-8") as f:
+            json.dump(universe_report.to_dict(), f, indent=2)
+        console.print(f"[bold green]Saved JSON report to:[/bold green] {json_output}")
+
+
 if __name__ == "__main__":
     app()
