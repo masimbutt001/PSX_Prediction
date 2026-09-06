@@ -27,10 +27,12 @@ app = typer.Typer(
 config_app = typer.Typer(help="Manage and inspect platform configuration")
 storage_app = typer.Typer(help="Manage and inspect local analytical storage & DuckDB")
 data_app = typer.Typer(help="Inspect, validate, and query market datasets")
+features_app = typer.Typer(help="Calculate and manage engineered feature stores")
 
 app.add_typer(config_app, name="config")
 app.add_typer(storage_app, name="storage")
 app.add_typer(data_app, name="data")
+app.add_typer(features_app, name="features")
 
 console = Console()
 
@@ -694,6 +696,80 @@ def data_update(
         manifest_file = updater.storage_paths["processed_prices"] / "update_manifest.json"
         if manifest_file.exists():
             console.print(f"[bold green]Saved update manifest to:[/bold green] {manifest_file}")
+
+
+@features_app.command("build")
+def features_build(
+    symbols: Annotated[
+        Optional[str],
+        typer.Option(
+            "--symbols",
+            "-s",
+            help="Comma-separated symbols to compute features for (e.g. 'OGDC,PPL'). "
+            "If omitted, processes all available datasets in processed storage.",
+        ),
+    ] = None,
+    dry_run: Annotated[
+        bool,
+        typer.Option("--dry-run", help="Calculate features without saving to disk"),
+    ] = False,
+) -> None:
+    """Compute vectorized technical indicators for processed market datasets."""
+    from psx_predictor.features.builder import TechnicalFeatureBuilder
+
+    target_syms = [s.strip().upper() for s in symbols.split(",") if s.strip()] if symbols else None
+
+    console.print(
+        "Starting technical feature generation | "
+        f"Mode: {'[magenta]DRY-RUN[/magenta]' if dry_run else '[green]PERSIST[/green]'}"
+    )
+
+    builder = TechnicalFeatureBuilder()
+    universe_result = builder.build_universe(symbols=target_syms, save=not dry_run)
+
+    # Render summary table
+    table = Table(title="Technical Feature Generation Results", box=box.ROUNDED)
+    table.add_column("Symbol", style="bold cyan")
+    table.add_column("Status", justify="center")
+    table.add_column("Sessions", justify="right")
+    table.add_column("Features", justify="right")
+    table.add_column("Date Span", justify="center")
+    table.add_column("Duration", justify="right")
+
+    for sym, res in universe_result.symbol_results.items():
+        if res.status == "SUCCESS":
+            status_style = "[bold green]SUCCESS[/bold green]"
+        else:
+            status_style = f"[bold red]FAILED[/bold red] ({res.error_message})"
+
+        span_str = f"{res.start_date} -> {res.end_date}" if res.start_date else "N/A"
+        table.add_row(
+            sym,
+            status_style,
+            str(res.total_records),
+            str(res.feature_count),
+            span_str,
+            f"{res.duration_seconds:.2f}s",
+        )
+
+    console.print(table)
+
+    summary_panel = Panel(
+        f"[bold]Total Symbols:[/bold] {universe_result.total_symbols}  |  "
+        f"[bold green]Successful:[/bold green] {universe_result.successful_symbols}  |  "
+        f"[bold red]Failed:[/bold red] {universe_result.failed_symbols}\n"
+        f"[bold cyan]Total Feature Rows Generated:[/bold cyan] {universe_result.total_records:,}",
+        title="Features Summary",
+        border_style="cyan",
+    )
+    console.print(summary_panel)
+
+    if dry_run:
+        console.print("[dim yellow]Dry run active: No files saved to disk.[/dim yellow]")
+    else:
+        manifest_file = builder.storage_paths["features_technical"] / "feature_manifest.json"
+        if manifest_file.exists():
+            console.print(f"[bold green]Saved feature manifest to:[/bold green] {manifest_file}")
 
 
 if __name__ == "__main__":
