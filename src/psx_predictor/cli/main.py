@@ -797,7 +797,9 @@ def model_train(
         typer.Option(
             "--model",
             "-m",
-            help="Model family to evaluate: 'all', 'baselines', or 'logistic'",
+            help=(
+                "Model family: 'all', 'baselines', 'logistic', 'random_forest', 'xgboost', 'trees'"
+            ),
         ),
     ] = "all",
     target: Annotated[
@@ -824,7 +826,7 @@ def model_train(
         ),
     ] = False,
 ) -> None:
-    """Train and evaluate baseline and linear models on strict chronological split."""
+    """Train and evaluate baseline, linear, and tree models on strict chronological split."""
     from psx_predictor.models.evaluation import display_evaluation_table
     from psx_predictor.models.trainer import ModelTrainer
 
@@ -852,6 +854,71 @@ def model_train(
         raise typer.Exit(code=1) from exc
 
     display_evaluation_table(results=results, symbol=clean_sym, console=console)
+
+
+@model_app.command("compare")
+def model_compare(
+    symbol: Annotated[
+        str,
+        typer.Option("--symbol", "-s", help="PSX ticker symbol (e.g. OGDC)"),
+    ],
+    target: Annotated[
+        str,
+        typer.Option(
+            "--target",
+            "-t",
+            help="Prediction target column (e.g. 'target_next_day_dir')",
+        ),
+    ] = "target_next_day_dir",
+    split_ratio: Annotated[
+        float,
+        typer.Option(
+            "--split-ratio",
+            "-r",
+            help="Chronological train split ratio (default: 0.8)",
+        ),
+    ] = 0.8,
+    initial_cash: Annotated[
+        float,
+        typer.Option(
+            "--initial-cash",
+            help="Starting cash portfolio allocation in PKR (default: 1,000,000)",
+        ),
+    ] = 1_000_000.0,
+    rf_rate: Annotated[
+        float,
+        typer.Option(
+            "--rf-rate",
+            help="Annual risk-free benchmark rate (default: 0.15 for 15% SBP policy rate)",
+        ),
+    ] = 0.15,
+) -> None:
+    """Benchmark all models (baselines, logistic, trees) on identical out-of-sample data."""
+    from psx_predictor.models.comparator import ModelComparator, display_comparison_table
+
+    clean_sym = symbol.strip().upper()
+    console.print(
+        f"Initiating multi-model benchmark for [bold cyan]{clean_sym}[/bold cyan] | "
+        f"Target: [magenta]{target}[/magenta] | Train Split: [green]{split_ratio:.0%}[/green]"
+    )
+
+    comparator = ModelComparator()
+    try:
+        summaries = comparator.compare_universe(
+            symbol=clean_sym,
+            target_col=target,
+            train_ratio=split_ratio,
+            initial_cash=initial_cash,
+            risk_free_rate=rf_rate,
+        )
+    except FileNotFoundError as fnf:
+        console.print(f"[bold red]Data Error:[/bold red] {fnf}")
+        raise typer.Exit(code=1) from fnf
+    except Exception as exc:
+        console.print(f"[bold red]Comparison Error:[/bold red] {exc}")
+        raise typer.Exit(code=1) from exc
+
+    display_comparison_table(summaries=summaries, symbol=clean_sym, console=console)
 
 
 @app.command("backtest")

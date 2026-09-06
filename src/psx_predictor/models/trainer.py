@@ -16,6 +16,7 @@ from psx_predictor.models.baselines import (
 from psx_predictor.models.evaluation import evaluate_classifier
 from psx_predictor.models.linear import LogisticRegressionBaseline
 from psx_predictor.models.split import chronological_train_test_split
+from psx_predictor.models.trees import RandomForestBaseline, XGBoostBaseline
 from psx_predictor.storage.parquet_io import read_parquet
 from psx_predictor.storage.paths import ensure_directories
 
@@ -52,7 +53,7 @@ class ModelTrainer:
 
         Args:
             symbol: Ticker symbol (e.g. 'OGDC').
-            model_type: 'baselines', 'logistic', or 'all'.
+            model_type: 'baselines', 'logistic', 'random_forest', 'xgboost', 'trees', or 'all'.
             target_col: Prediction target column.
             train_ratio: Out-of-sample split ratio (default: 0.8).
             save_models: Whether to serialize fitted models to disk.
@@ -81,8 +82,9 @@ class ModelTrainer:
         )
 
         # Select models to evaluate
+        m_type = model_type.lower().strip()
         models_to_run: list[BaseModel] = []
-        if model_type in ("baselines", "all"):
+        if m_type in ("baselines", "all"):
             models_to_run.extend(
                 [
                     MajorityClassifier(),
@@ -91,12 +93,19 @@ class ModelTrainer:
                 ]
             )
 
-        if model_type in ("logistic", "all"):
+        if m_type in ("logistic", "all"):
             models_to_run.append(LogisticRegressionBaseline())
+
+        if m_type in ("random_forest", "rf", "trees", "all"):
+            models_to_run.append(RandomForestBaseline())
+
+        if m_type in ("xgboost", "xgb", "trees", "all"):
+            models_to_run.append(XGBoostBaseline())
 
         if not models_to_run:
             raise ValueError(
-                f"Unknown model_type '{model_type}'. Choose baselines, logistic, or all."
+                f"Unknown model_type '{model_type}'. "
+                "Choose baselines, logistic, random_forest, xgboost, trees, or all."
             )
 
         results: list[ModelEvaluationResult] = []
