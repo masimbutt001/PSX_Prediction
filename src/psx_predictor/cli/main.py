@@ -29,12 +29,17 @@ storage_app = typer.Typer(help="Manage and inspect local analytical storage & Du
 data_app = typer.Typer(help="Inspect, validate, and query market datasets")
 features_app = typer.Typer(help="Calculate and manage engineered feature stores")
 model_app = typer.Typer(help="Train, evaluate, and benchmark predictive models")
+predict_app = typer.Typer(
+    help="Generate and audit live market predictions",
+    invoke_without_command=True,
+)
 
 app.add_typer(config_app, name="config")
 app.add_typer(storage_app, name="storage")
 app.add_typer(data_app, name="data")
 app.add_typer(features_app, name="features")
 app.add_typer(model_app, name="model")
+app.add_typer(predict_app, name="predict")
 
 console = Console()
 
@@ -975,6 +980,174 @@ def backtest_command(
         raise typer.Exit(code=1) from exc
 
     display_backtest_report(metrics=metrics, result=sim_result, console=console)
+
+
+def _generate_prediction_cli(
+    symbol: str,
+    model: str = "xgboost",
+    target: str = "target_next_day_dir",
+    save: bool = True,
+) -> None:
+    from psx_predictor.predictions.predictor import LivePredictor
+
+    clean_sym = symbol.strip().upper()
+    console.print(
+        f"Generating live forecast for [bold cyan]{clean_sym}[/bold cyan] | "
+        f"Model: [yellow]{model}[/yellow] | Target: [magenta]{target}[/magenta]"
+    )
+
+    predictor = LivePredictor()
+    try:
+        record = predictor.generate_prediction(
+            symbol=clean_sym,
+            model_name=model,
+            target_col=target,
+            log_to_registry=save,
+        )
+    except FileNotFoundError as fnf:
+        console.print(f"[bold red]Data Error:[/bold red] {fnf}")
+        raise typer.Exit(code=1) from fnf
+    except Exception as exc:
+        console.print(f"[bold red]Prediction Error:[/bold red] {exc}")
+        raise typer.Exit(code=1) from exc
+
+    table = Table(
+        title=f"Live Prediction: {record.symbol} (Target Date: {record.target_date})",
+        box=box.ROUNDED,
+        header_style="bold cyan",
+    )
+    table.add_column("Property", style="bold white")
+    table.add_column("Value", style="bold green")
+
+    table.add_row("Prediction ID", record.prediction_id)
+    table.add_row("Ticker Symbol", record.symbol)
+    table.add_row("Target Session Date", record.target_date)
+    table.add_row("Model Architecture", record.model_name)
+    table.add_row("Probability (Up)", f"{record.up_probability:.1%}")
+
+    sig_color = (
+        "green" if record.signal == "BUY" else ("red" if record.signal == "SELL" else "yellow")
+    )
+    table.add_row("Directional Signal", f"[bold {sig_color}]{record.signal}[/bold {sig_color}]")
+    table.add_row("Signal Confidence", f"{record.confidence:.1%}")
+    table.add_row("Top Feature Drivers", record.drivers_json)
+    status_str = (
+        "[bold green]REGISTERED (predictions.parquet)[/bold green]"
+        if save
+        else "[dim yellow]EPHEMERAL (Not logged)[/dim yellow]"
+    )
+    table.add_row("Registry Status", status_str)
+
+    console.print()
+    console.print(table)
+    console.print()
+
+
+@predict_app.callback(invoke_without_command=True)
+def predict_main(
+    ctx: typer.Context,
+    symbol: Annotated[
+        Optional[str],
+        typer.Option("--symbol", "-s", help="PSX ticker symbol (e.g. OGDC)"),
+    ] = None,
+    model: Annotated[
+        str,
+        typer.Option(
+            "--model",
+            "-m",
+            help="Predictive model: 'xgboost', 'random_forest', or 'logistic'",
+        ),
+    ] = "xgboost",
+    target: Annotated[
+        str,
+        typer.Option(
+            "--target",
+            "-t",
+            help="Prediction target column (default: 'target_next_day_dir')",
+        ),
+    ] = "target_next_day_dir",
+    save: Annotated[
+        bool,
+        typer.Option(
+            "--save/--no-save",
+            help="Persist prediction to predictions registry",
+        ),
+    ] = True,
+) -> None:
+    """Generate next-session directional prediction for a given symbol."""
+    if ctx.invoked_subcommand is not None:
+        return
+
+    if not symbol:
+        console.print(
+            "[bold red]Error:[/bold red] Specify --symbol (e.g. `psx predict --symbol OGDC`).\n"
+            "Run `psx predict --help` for available subcommands."
+        )
+        raise typer.Exit(code=1)
+
+    _generate_prediction_cli(symbol=symbol, model=model, target=target, save=save)
+
+
+@predict_app.command("generate")
+def predict_generate(
+    symbol: Annotated[
+        str,
+        typer.Option("--symbol", "-s", help="PSX ticker symbol (e.g. OGDC)"),
+    ],
+    model: Annotated[
+        str,
+        typer.Option(
+            "--model",
+            "-m",
+            help="Predictive model: 'xgboost', 'random_forest', or 'logistic'",
+        ),
+    ] = "xgboost",
+    target: Annotated[
+        str,
+        typer.Option(
+            "--target",
+            "-t",
+            help="Prediction target column (default: 'target_next_day_dir')",
+        ),
+    ] = "target_next_day_dir",
+    save: Annotated[
+        bool,
+        typer.Option(
+            "--save/--no-save",
+            help="Persist prediction to predictions registry",
+        ),
+    ] = True,
+) -> None:
+    """Explicit command to generate and register a market forecast."""
+    _generate_prediction_cli(symbol=symbol, model=model, target=target, save=save)
+
+
+@predict_app.command("audit")
+def predict_audit(
+    symbol: Annotated[
+        Optional[str],
+        typer.Option(
+            "--symbol",
+            "-s",
+            help="Filter audit to a specific ticker symbol (e.g. OGDC).",
+        ),
+    ] = None,
+) -> None:
+    """Reconcile unverified past forecasts against actual market closes and compute Brier scores."""
+    from psx_predictor.predictions.auditor import PredictionAuditor, display_audit_report
+
+    clean_sym = symbol.strip().upper() if symbol else None
+    sym_msg = f" for [bold cyan]{clean_sym}[/bold cyan]" if clean_sym else " across universe"
+    console.print(f"Initiating prediction registry audit and outcome reconciliation{sym_msg}...")
+
+    auditor = PredictionAuditor()
+    try:
+        predictions_df, summary = auditor.reconcile(symbol=clean_sym)
+    except Exception as exc:
+        console.print(f"[bold red]Audit Error:[/bold red] {exc}")
+        raise typer.Exit(code=1) from exc
+
+    display_audit_report(summary=summary, predictions_df=predictions_df, console=console)
 
 
 if __name__ == "__main__":
