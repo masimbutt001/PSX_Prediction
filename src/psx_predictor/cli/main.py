@@ -854,5 +854,61 @@ def model_train(
     display_evaluation_table(results=results, symbol=clean_sym, console=console)
 
 
+@app.command("backtest")
+def backtest_command(
+    symbol: Annotated[
+        str,
+        typer.Option("--symbol", "-s", help="PSX ticker symbol to backtest (e.g. OGDC)"),
+    ],
+    strategy: Annotated[
+        str,
+        typer.Option(
+            "--strategy",
+            help="Trading strategy: 'sma_crossover', 'naive_persistence', or 'logistic'",
+        ),
+    ] = "sma_crossover",
+    initial_cash: Annotated[
+        float,
+        typer.Option(
+            "--initial-cash",
+            help="Starting cash portfolio allocation in PKR (default: 1,000,000)",
+        ),
+    ] = 1_000_000.0,
+    rf_rate: Annotated[
+        float,
+        typer.Option(
+            "--rf-rate",
+            help="Annual risk-free benchmark rate (default: 0.15 for 15% SBP policy rate)",
+        ),
+    ] = 0.15,
+) -> None:
+    """Simulate trading strategy with realistic PSX transaction frictions and circuit locks."""
+    from psx_predictor.backtesting.metrics import display_backtest_report
+    from psx_predictor.backtesting.runner import BacktestRunner
+
+    clean_sym = symbol.strip().upper()
+    console.print(
+        f"Initiating backtest for [bold cyan]{clean_sym}[/bold cyan] | "
+        f"Strategy: [yellow]{strategy}[/yellow] | Capital: [green]PKR {initial_cash:,.0f}[/green]"
+    )
+
+    runner = BacktestRunner()
+    try:
+        sim_result, metrics = runner.run_strategy(
+            symbol=clean_sym,
+            strategy=strategy,
+            initial_cash=initial_cash,
+            risk_free_rate=rf_rate,
+        )
+    except FileNotFoundError as fnf:
+        console.print(f"[bold red]Data Error:[/bold red] {fnf}")
+        raise typer.Exit(code=1) from fnf
+    except Exception as exc:
+        console.print(f"[bold red]Backtest Error:[/bold red] {exc}")
+        raise typer.Exit(code=1) from exc
+
+    display_backtest_report(metrics=metrics, result=sim_result, console=console)
+
+
 if __name__ == "__main__":
     app()
