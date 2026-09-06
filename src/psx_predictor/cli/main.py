@@ -230,5 +230,143 @@ def data_inspect(
     console.print(preview_table)
 
 
+@data_app.command("fetch")
+def data_fetch(
+    symbol: Annotated[
+        str,
+        typer.Option("--symbol", "-s", help="PSX Ticker symbol to fetch (e.g. OGDC)"),
+    ],
+    source: Annotated[
+        str,
+        typer.Option(
+            "--source",
+            help="Ingestion source: 'composite', 'scs', 'yahoo', or 'dps'",
+        ),
+    ] = "composite",
+    days: Annotated[
+        int,
+        typer.Option("--days", "-d", help="Lookback window in days (default: 30)"),
+    ] = 30,
+    start_date: Annotated[
+        Optional[str],
+        typer.Option("--start-date", help="Custom start date (YYYY-MM-DD)"),
+    ] = None,
+    end_date: Annotated[
+        Optional[str],
+        typer.Option("--end-date", help="Custom end date (YYYY-MM-DD)"),
+    ] = None,
+    save: Annotated[
+        bool,
+        typer.Option("--save/--no-save", help="Whether to save normalized data to storage"),
+    ] = True,
+    dry_run: Annotated[
+        bool,
+        typer.Option("--dry-run", help="Fetch and validate without writing to disk"),
+    ] = False,
+) -> None:
+    """Fetch historical market data from SCS Trade, Yahoo Finance, or PSX DPS."""
+    import datetime
+
+    from psx_predictor.collectors.base import BaseCollector
+    from psx_predictor.collectors.composite import CompositeCollector
+    from psx_predictor.collectors.dps_collector import DPSCollector
+    from psx_predictor.collectors.scs_collector import SCSTradeCollector
+    from psx_predictor.collectors.yahoo_collector import YahooCollector
+    from psx_predictor.storage.parquet_io import write_parquet_atomic
+
+    # Resolve dates
+    resolved_end = datetime.date.fromisoformat(end_date) if end_date else datetime.date.today()
+    resolved_start = (
+        datetime.date.fromisoformat(start_date)
+        if start_date
+        else (resolved_end - datetime.timedelta(days=days))
+    )
+
+    clean_sym = symbol.strip().upper()
+    console.print(
+        f"Fetching [bold yellow]{clean_sym}[/bold yellow] via provider [cyan]'{source}'[/cyan] "
+        f"({resolved_start} to {resolved_end})..."
+    )
+
+    collector: BaseCollector
+    src_lower = source.lower()
+    if src_lower == "scs":
+        collector = SCSTradeCollector()
+    elif src_lower == "yahoo":
+        collector = YahooCollector()
+    elif src_lower == "dps":
+        collector = DPSCollector()
+    elif src_lower == "composite":
+        collector = CompositeCollector()
+    else:
+        console.print(
+            f"[bold red]Unknown source:[/bold red] '{source}'. "
+            "Choose 'composite', 'scs', 'yahoo', or 'dps'."
+        )
+        raise typer.Exit(code=1)
+
+    try:
+        df = collector.fetch_historical(
+            symbol=clean_sym,
+            start_date=resolved_start,
+            end_date=resolved_end,
+            save_raw_payload=not dry_run,
+        )
+    except Exception as e:
+        console.print(f"[bold red]Fetch error:[/bold red] {e}")
+        raise typer.Exit(code=1) from e
+
+    # Summary table
+    table = Table(title=f"Fetch Results for {clean_sym} ({collector.source_name})", box=box.ROUNDED)
+    table.add_column("Metric", style="cyan")
+    table.add_column("Value", style="bold white")
+
+    table.add_row("Sessions Retrieved", str(len(df)))
+    table.add_row("Date Bounds", f"{df['trade_date'].min()} to {df['trade_date'].max()}")
+    table.add_row("Latest Close", f"PKR {df['close'].iloc[-1]:.2f}")
+    table.add_row("Upper Lock Sessions", str(int(df["is_upper_lock"].sum())))
+    table.add_row("Lower Lock Sessions", str(int(df["is_lower_lock"].sum())))
+
+    console.print(table)
+
+    # Save to processed storage if requested
+    if save and not dry_run:
+        cfg = load_config()
+        paths = get_storage_paths(cfg.settings.data_dir)
+        dest_file = paths["processed_prices"] / f"{clean_sym}.parquet"
+        write_parquet_atomic(df, dest_file)
+        console.print(f"[bold green]Saved processed Parquet to:[/bold green] {dest_file}")
+    elif dry_run:
+        console.print(
+            "[dim yellow]Dry run active: No files saved to processed storage.[/dim yellow]"
+        )
+
+    # Preview
+    preview = df.tail(5)
+    preview_table = Table(title=f"Recent Sessions ({clean_sym})", box=box.SIMPLE_HEAVY)
+    display_cols = [
+        c
+        for c in [
+            "trade_date",
+            "open",
+            "high",
+            "low",
+            "close",
+            "volume",
+            "is_upper_lock",
+            "is_lower_lock",
+        ]
+        if c in preview.columns
+    ]
+    for col in display_cols:
+        preview_table.add_column(col)
+
+    for _, row in preview.iterrows():
+        row_vals = [str(row[col]) for col in display_cols]
+        preview_table.add_row(*row_vals)
+
+    console.print(preview_table)
+
+
 if __name__ == "__main__":
     app()
