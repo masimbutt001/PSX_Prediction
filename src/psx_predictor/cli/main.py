@@ -566,5 +566,135 @@ def data_audit(
         console.print(f"[bold green]Saved JSON report to:[/bold green] {json_output}")
 
 
+@data_app.command("update")
+def data_update(
+    symbols: Annotated[
+        Optional[str],
+        typer.Option(
+            "--symbols",
+            "-s",
+            help="Comma-separated symbols to update (e.g. 'OGDC,PPL'). "
+            "If omitted, runs all enabled.",
+        ),
+    ] = None,
+    source: Annotated[
+        str,
+        typer.Option(
+            "--source",
+            help="Data source to query: 'composite', 'scs', 'yahoo', or 'dps'",
+        ),
+    ] = "composite",
+    dry_run: Annotated[
+        bool,
+        typer.Option("--dry-run", help="Fetch and validate delta without writing to disk"),
+    ] = False,
+    force: Annotated[
+        bool,
+        typer.Option(
+            "--force", "-f", help="Force querying provider even if latest date matches today"
+        ),
+    ] = False,
+    auto_bootstrap: Annotated[
+        bool,
+        typer.Option(
+            "--auto-bootstrap/--no-auto-bootstrap",
+            help="Automatically bootstrap missing datasets",
+        ),
+    ] = True,
+) -> None:
+    """Incrementally update local market datasets with newest trading sessions."""
+    from psx_predictor.collectors.base import BaseCollector
+    from psx_predictor.collectors.composite import CompositeCollector
+    from psx_predictor.collectors.dps_collector import DPSCollector
+    from psx_predictor.collectors.scs_collector import SCSTradeCollector
+    from psx_predictor.collectors.yahoo_collector import YahooCollector
+    from psx_predictor.processing.updater import IncrementalUpdater
+
+    collector: BaseCollector
+    src_lower = source.lower()
+    if src_lower == "scs":
+        collector = SCSTradeCollector()
+    elif src_lower == "yahoo":
+        collector = YahooCollector()
+    elif src_lower == "dps":
+        collector = DPSCollector()
+    elif src_lower == "composite":
+        collector = CompositeCollector()
+    else:
+        console.print(
+            f"[bold red]Unknown source:[/bold red] '{source}'. "
+            "Choose 'composite', 'scs', 'yahoo', or 'dps'."
+        )
+        raise typer.Exit(code=1)
+
+    target_syms = [s.strip().upper() for s in symbols.split(",") if s.strip()] if symbols else None
+
+    console.print(
+        f"Starting incremental update | Source: [yellow]'{collector.source_name}'[/yellow] | "
+        f"Mode: {'[magenta]DRY-RUN[/magenta]' if dry_run else '[green]PERSIST[/green]'}"
+    )
+
+    updater = IncrementalUpdater(collector=collector)
+    universe_result = updater.update_universe(
+        symbols=target_syms,
+        dry_run=dry_run,
+        force=force,
+        auto_bootstrap=auto_bootstrap,
+    )
+
+    # Render summary table
+    table = Table(title="Incremental Daily Update Execution Results", box=box.ROUNDED)
+    table.add_column("Symbol", style="bold cyan")
+    table.add_column("Status", justify="center")
+    table.add_column("Prev Latest", justify="center")
+    table.add_column("New Latest", justify="center")
+    table.add_column("Added", justify="right")
+    table.add_column("Total", justify="right")
+    table.add_column("Duration", justify="right")
+
+    for sym, res in universe_result.symbol_results.items():
+        if res.status == "UPDATED":
+            status_style = "[bold green]UPDATED[/bold green]"
+        elif res.status == "ALREADY_UP_TO_DATE":
+            status_style = "[cyan]UP TO DATE[/cyan]"
+        elif res.status == "BOOTSTRAPPED":
+            status_style = "[bold magenta]BOOTSTRAPPED[/bold magenta]"
+        else:
+            status_style = f"[bold red]FAILED[/bold red] ({res.error_message})"
+
+        prev_str = res.previous_latest_date or "None"
+        new_str = res.new_latest_date or "None"
+        table.add_row(
+            sym,
+            status_style,
+            prev_str,
+            new_str,
+            str(res.records_added),
+            str(res.total_records),
+            f"{res.duration_seconds:.2f}s",
+        )
+
+    console.print(table)
+
+    summary_panel = Panel(
+        f"[bold]Total Symbols:[/bold] {universe_result.total_symbols}  |  "
+        f"[bold green]Updated:[/bold green] {universe_result.updated_symbols}  |  "
+        f"[cyan]Up To Date:[/cyan] {universe_result.up_to_date_symbols}  |  "
+        f"[bold magenta]Bootstrapped:[/bold magenta] {universe_result.bootstrapped_symbols}  |  "
+        f"[bold red]Failed:[/bold red] {universe_result.failed_symbols}\n"
+        f"[bold cyan]Total New Records Added:[/bold cyan] {universe_result.total_records_added:,}",
+        title="Update Summary",
+        border_style="cyan",
+    )
+    console.print(summary_panel)
+
+    if dry_run:
+        console.print("[dim yellow]Dry run active: No files modified on disk.[/dim yellow]")
+    else:
+        manifest_file = updater.storage_paths["processed_prices"] / "update_manifest.json"
+        if manifest_file.exists():
+            console.print(f"[bold green]Saved update manifest to:[/bold green] {manifest_file}")
+
+
 if __name__ == "__main__":
     app()

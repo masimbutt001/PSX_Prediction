@@ -12,6 +12,11 @@ from psx_predictor.processing.quality_report import (
     SymbolQualityReport,
     UniverseQualityReport,
 )
+from psx_predictor.processing.updater import (
+    IncrementalUpdater,
+    SymbolUpdateResult,
+    UniverseUpdateResult,
+)
 
 __all__ = [
     "compute_continuous_adjusted_close",
@@ -22,4 +27,7 @@ __all__ = [
     "SymbolQualityReport",
     "UniverseQualityReport",
     "DataQualityAuditor",
+    "IncrementalUpdater",
+    "SymbolUpdateResult",
+    "UniverseUpdateResult",
 ]
