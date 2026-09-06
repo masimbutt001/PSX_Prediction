@@ -713,6 +713,13 @@ def features_build(
         bool,
         typer.Option("--dry-run", help="Calculate features without saving to disk"),
     ] = False,
+    with_targets: Annotated[
+        bool,
+        typer.Option(
+            "--with-targets/--without-targets",
+            help="Append supervised prediction targets (direction, 3-class, return)",
+        ),
+    ] = True,
 ) -> None:
     """Compute vectorized technical indicators for processed market datasets."""
     from psx_predictor.features.builder import TechnicalFeatureBuilder
@@ -721,11 +728,16 @@ def features_build(
 
     console.print(
         "Starting technical feature generation | "
+        f"Targets: {'[green]INCLUDED[/green]' if with_targets else '[dim]EXCLUDED[/dim]'} | "
         f"Mode: {'[magenta]DRY-RUN[/magenta]' if dry_run else '[green]PERSIST[/green]'}"
     )
 
     builder = TechnicalFeatureBuilder()
-    universe_result = builder.build_universe(symbols=target_syms, save=not dry_run)
+    universe_result = builder.build_universe(
+        symbols=target_syms,
+        save=not dry_run,
+        with_targets=with_targets,
+    )
 
     # Render summary table
     table = Table(title="Technical Feature Generation Results", box=box.ROUNDED)

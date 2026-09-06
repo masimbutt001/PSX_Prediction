@@ -5,6 +5,12 @@ from psx_predictor.features.builder import (
     FeatureUniverseResult,
     TechnicalFeatureBuilder,
 )
+from psx_predictor.features.targets import (
+    compute_all_prediction_targets,
+    compute_binary_direction_target,
+    compute_future_return_target,
+    compute_threshold_3class_target,
+)
 from psx_predictor.features.technical import (
     compute_all_technical_features,
     compute_atr,
@@ -29,6 +35,10 @@ __all__ = [
     "compute_atr",
     "compute_bollinger_bands",
     "compute_volume_dynamics",
+    "compute_all_prediction_targets",
+    "compute_binary_direction_target",
+    "compute_threshold_3class_target",
+    "compute_future_return_target",
     "TechnicalFeatureBuilder",
     "FeatureBuildResult",
     "FeatureUniverseResult",

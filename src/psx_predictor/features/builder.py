@@ -11,6 +11,7 @@ import pandas as pd
 from loguru import logger
 
 from psx_predictor.config.loader import load_config
+from psx_predictor.features.targets import compute_all_prediction_targets
 from psx_predictor.features.technical import compute_all_technical_features
 from psx_predictor.storage.parquet_io import (
     DatasetNotFoundError,
@@ -83,15 +84,21 @@ class TechnicalFeatureBuilder:
         self,
         symbol: str,
         save: bool = True,
+        with_targets: bool = True,
+        threshold: float = 0.0075,
+        target_horizon: int = 5,
     ) -> pd.DataFrame:
-        """Compute technical features for a single stock and optionally persist to disk.
+        """Compute technical features and optional targets for a single stock.
 
         Args:
             symbol: Ticker symbol (e.g. 'OGDC').
             save: Whether to atomically serialize to Parquet (default: True).
+            with_targets: Whether to append supervised prediction targets (default: True).
+            threshold: 3-class breakout return threshold (default: 0.0075).
+            target_horizon: Multi-session return horizon (default: 5).
 
         Returns:
-            DataFrame enriched with technical features.
+            DataFrame enriched with technical features and targets.
 
         Raises:
             DatasetNotFoundError: If processed price dataset does not exist.
@@ -113,6 +120,13 @@ class TechnicalFeatureBuilder:
         )
         features_df = compute_all_technical_features(df)
 
+        if with_targets:
+            logger.info(f"[{clean_sym}] Computing supervised prediction targets...")
+            targets_df = compute_all_prediction_targets(
+                df, threshold=threshold, horizon=target_horizon
+            )
+            features_df = pd.concat([features_df, targets_df], axis=1)
+
         if save:
             dest_file = (
                 self.storage_paths["features_technical"] / f"{clean_sym}_tech_features.parquet"
@@ -126,12 +140,18 @@ class TechnicalFeatureBuilder:
         self,
         symbols: Optional[list[str]] = None,
         save: bool = True,
+        with_targets: bool = True,
+        threshold: float = 0.0075,
+        target_horizon: int = 5,
     ) -> FeatureUniverseResult:
         """Generate technical feature sets across the specified or processed universe.
 
         Args:
             symbols: Optional list of tickers. If None, discovers all *.parquet in processed_prices.
             save: Whether to save features to Parquet (default: True).
+            with_targets: Whether to append supervised prediction targets (default: True).
+            threshold: 3-class breakout return threshold (default: 0.0075).
+            target_horizon: Multi-session return horizon (default: 5).
 
         Returns:
             FeatureUniverseResult summarizing feature generation metrics.
@@ -155,7 +175,13 @@ class TechnicalFeatureBuilder:
 
             # Strict failure isolation per ticker
             try:
-                features_df = self.build_for_symbol(sym, save=save)
+                features_df = self.build_for_symbol(
+                    sym,
+                    save=save,
+                    with_targets=with_targets,
+                    threshold=threshold,
+                    target_horizon=target_horizon,
+                )
                 duration = round(time.time() - start_ts, 3)
 
                 start_date = (
