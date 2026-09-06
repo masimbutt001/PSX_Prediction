@@ -28,11 +28,13 @@ config_app = typer.Typer(help="Manage and inspect platform configuration")
 storage_app = typer.Typer(help="Manage and inspect local analytical storage & DuckDB")
 data_app = typer.Typer(help="Inspect, validate, and query market datasets")
 features_app = typer.Typer(help="Calculate and manage engineered feature stores")
+model_app = typer.Typer(help="Train, evaluate, and benchmark predictive models")
 
 app.add_typer(config_app, name="config")
 app.add_typer(storage_app, name="storage")
 app.add_typer(data_app, name="data")
 app.add_typer(features_app, name="features")
+app.add_typer(model_app, name="model")
 
 console = Console()
 
@@ -782,6 +784,74 @@ def features_build(
         manifest_file = builder.storage_paths["features_technical"] / "feature_manifest.json"
         if manifest_file.exists():
             console.print(f"[bold green]Saved feature manifest to:[/bold green] {manifest_file}")
+
+
+@model_app.command("train")
+def model_train(
+    symbol: Annotated[
+        str,
+        typer.Option("--symbol", "-s", help="PSX ticker symbol (e.g. OGDC)"),
+    ],
+    model: Annotated[
+        str,
+        typer.Option(
+            "--model",
+            "-m",
+            help="Model family to evaluate: 'all', 'baselines', or 'logistic'",
+        ),
+    ] = "all",
+    target: Annotated[
+        str,
+        typer.Option(
+            "--target",
+            "-t",
+            help="Prediction target column (e.g. 'target_next_day_dir')",
+        ),
+    ] = "target_next_day_dir",
+    split_ratio: Annotated[
+        float,
+        typer.Option(
+            "--split-ratio",
+            "-r",
+            help="Chronological train split ratio between 0.1 and 0.95 (default: 0.8)",
+        ),
+    ] = 0.8,
+    save: Annotated[
+        bool,
+        typer.Option(
+            "--save/--no-save",
+            help="Persist fitted model artifacts to analytical storage",
+        ),
+    ] = False,
+) -> None:
+    """Train and evaluate baseline and linear models on strict chronological split."""
+    from psx_predictor.models.evaluation import display_evaluation_table
+    from psx_predictor.models.trainer import ModelTrainer
+
+    clean_sym = symbol.strip().upper()
+    console.print(
+        f"Initiating model benchmark for [bold cyan]{clean_sym}[/bold cyan] | "
+        f"Family: [yellow]{model}[/yellow] | Target: [magenta]{target}[/magenta] | "
+        f"Train Split: [green]{split_ratio:.0%}[/green]"
+    )
+
+    trainer = ModelTrainer()
+    try:
+        results = trainer.train_and_evaluate(
+            symbol=clean_sym,
+            model_type=model.lower(),
+            target_col=target,
+            train_ratio=split_ratio,
+            save_models=save,
+        )
+    except FileNotFoundError as fnf:
+        console.print(f"[bold red]Data Error:[/bold red] {fnf}")
+        raise typer.Exit(code=1) from fnf
+    except Exception as exc:
+        console.print(f"[bold red]Training Error:[/bold red] {exc}")
+        raise typer.Exit(code=1) from exc
+
+    display_evaluation_table(results=results, symbol=clean_sym, console=console)
 
 
 if __name__ == "__main__":
