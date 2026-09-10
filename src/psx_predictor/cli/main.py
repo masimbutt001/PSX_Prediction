@@ -33,6 +33,7 @@ predict_app = typer.Typer(
     help="Generate and audit live market predictions",
     invoke_without_command=True,
 )
+news_app = typer.Typer(help="Collect and inspect financial news and PSX announcements")
 
 app.add_typer(config_app, name="config")
 app.add_typer(storage_app, name="storage")
@@ -40,6 +41,7 @@ app.add_typer(data_app, name="data")
 app.add_typer(features_app, name="features")
 app.add_typer(model_app, name="model")
 app.add_typer(predict_app, name="predict")
+app.add_typer(news_app, name="news")
 
 console = Console()
 
@@ -1148,6 +1150,194 @@ def predict_audit(
         raise typer.Exit(code=1) from exc
 
     display_audit_report(summary=summary, predictions_df=predictions_df, console=console)
+
+
+@news_app.command("fetch")
+def news_fetch(
+    source: Annotated[
+        str,
+        typer.Option(
+            "--source",
+            "-s",
+            help="Collection source: 'all', 'rss', or 'dps'",
+        ),
+    ] = "all",
+    symbol: Annotated[
+        Optional[str],
+        typer.Option(
+            "--symbol",
+            help="Optional ticker symbol for DPS announcements (e.g. OGDC)",
+        ),
+    ] = None,
+    count: Annotated[
+        int,
+        typer.Option(
+            "--count",
+            "-c",
+            help="Number of announcements to query from DPS (default: 50)",
+        ),
+    ] = 50,
+    dry_run: Annotated[
+        bool,
+        typer.Option(
+            "--dry-run",
+            help="Fetch and parse without persisting to storage",
+        ),
+    ] = False,
+) -> None:
+    """Fetch raw financial news feeds and/or PSX official corporate announcements."""
+    from psx_predictor.news.dps_announcements import DPSAnnouncementsCollector
+    from psx_predictor.news.rss_collector import RSSNewsCollector
+
+    src_lower = source.strip().lower()
+    if src_lower not in ("all", "rss", "dps"):
+        console.print(
+            f"[bold red]Unknown source:[/bold red] '{source}'. Choose 'all', 'rss', or 'dps'."
+        )
+        raise typer.Exit(code=1)
+
+    console.print(
+        f"Starting news & announcements ingestion | Source: [yellow]'{source}'[/yellow] | "
+        f"Mode: {'[magenta]DRY-RUN[/magenta]' if dry_run else '[green]PERSIST[/green]'}"
+    )
+
+    if src_lower in ("all", "rss"):
+        console.print("[bold cyan]Fetching Financial News RSS Feeds...[/bold cyan]")
+        rss_col = RSSNewsCollector()
+        rss_res = rss_col.fetch_all(dry_run=dry_run)
+
+        table = Table(title="RSS Financial News Collection Summary", box=box.ROUNDED)
+        table.add_column("Feed Source", style="cyan")
+        table.add_column("Items Extracted", justify="right")
+
+        for feed_name, n_items in rss_res.feed_stats.items():
+            table.add_row(feed_name, str(n_items))
+
+        table.add_section()
+        table.add_row(
+            "[bold white]Total Fetched[/bold white]",
+            f"[bold]{rss_res.total_fetched}[/bold]",
+        )
+        table.add_row(
+            "[bold green]New Added (Deduplicated)[/bold green]",
+            f"[bold green]{rss_res.new_articles_added}[/bold green]",
+        )
+        table.add_row(
+            "[dim yellow]Duplicates Skipped[/dim yellow]",
+            f"[dim yellow]{rss_res.duplicates_skipped}[/dim yellow]",
+        )
+        console.print(table)
+
+        if rss_res.articles:
+            preview_table = Table(title="Latest Articles Preview", box=box.SIMPLE_HEAVY)
+            preview_table.add_column("Source", style="cyan")
+            preview_table.add_column("Headline", style="white")
+            preview_table.add_column("Published", style="dim")
+
+            for art in rss_res.articles[:5]:
+                preview_table.add_row(art.source, art.headline[:70], art.published_at[:19])
+            console.print(preview_table)
+
+    if src_lower in ("all", "dps"):
+        sym_str = f" for '{symbol.upper()}'" if symbol else " across universe"
+        console.print(
+            f"[bold cyan]Fetching Official PSX Corporate Announcements{sym_str}...[/bold cyan]"
+        )
+        dps_col = DPSAnnouncementsCollector()
+        dps_res = dps_col.fetch_announcements(symbol=symbol, count=count, dry_run=dry_run)
+
+        dps_table = Table(title="PSX DPS Announcements Summary", box=box.ROUNDED)
+        dps_table.add_column("Metric", style="cyan")
+        dps_table.add_column("Value", justify="right", style="bold white")
+
+        dps_table.add_row("Symbol Filter", str(dps_res.symbol_filter or "ALL"))
+        dps_table.add_row("Total Fetched from DPS", str(dps_res.total_fetched))
+        dps_table.add_row(
+            "[bold green]New Announcements Added[/bold green]",
+            f"[bold green]{dps_res.new_announcements_added}[/bold green]",
+        )
+        dps_table.add_row(
+            "[dim yellow]Duplicates Skipped[/dim yellow]",
+            f"[dim yellow]{dps_res.duplicates_skipped}[/dim yellow]",
+        )
+        console.print(dps_table)
+
+        if dps_res.announcements:
+            ann_preview = Table(title="Recent PSX Announcements Preview", box=box.SIMPLE_HEAVY)
+            ann_preview.add_column("Date/Time", style="dim")
+            ann_preview.add_column("Symbol", style="bold yellow")
+            ann_preview.add_column("Company", style="cyan")
+            ann_preview.add_column("Subject / Title", style="white")
+            ann_preview.add_column("Doc", justify="center")
+
+            for ann in dps_res.announcements[:5]:
+                has_doc = "[green]PDF[/green]" if ann.document_url else "[dim]-[/dim]"
+                ann_preview.add_row(
+                    f"{ann.announcement_date} {ann.announcement_time}",
+                    ann.symbol,
+                    ann.company_name[:25],
+                    ann.title[:45],
+                    has_doc,
+                )
+            console.print(ann_preview)
+
+
+@news_app.command("status")
+def news_status() -> None:
+    """Display inventory of collected raw news articles and official announcements."""
+    cfg = load_config()
+    paths = get_storage_paths(cfg.settings.data_dir)
+    news_file = paths["raw_news"] / "news.parquet"
+    ann_file = paths["raw_announcements"] / "announcements.parquet"
+
+    status_table = Table(title="News & Corporate Announcements Storage Status", box=box.ROUNDED)
+    status_table.add_column("Dataset", style="bold cyan")
+    status_table.add_column("Path", style="dim")
+    status_table.add_column("Total Records", justify="right", style="bold green")
+    status_table.add_column("Date Span", justify="center")
+    status_table.add_column("Unique Entities", justify="center")
+
+    if news_file.exists():
+        news_df = read_parquet(news_file)
+        n_news = len(news_df)
+        news_span = (
+            f"{news_df['published_at'].min()[:10]} -> {news_df['published_at'].max()[:10]}"
+            if not news_df.empty and "published_at" in news_df.columns
+            else "N/A"
+        )
+        n_src = (
+            str(news_df["source"].nunique())
+            if not news_df.empty and "source" in news_df.columns
+            else "0"
+        )
+        status_table.add_row(
+            "Financial RSS News", str(news_file), str(n_news), news_span, f"{n_src} sources"
+        )
+    else:
+        status_table.add_row("Financial RSS News", str(news_file), "0", "N/A", "0 sources")
+
+    if ann_file.exists():
+        ann_df = read_parquet(ann_file)
+        n_ann = len(ann_df)
+        ann_span = (
+            f"{ann_df['announcement_date'].min()} -> {ann_df['announcement_date'].max()}"
+            if not ann_df.empty and "announcement_date" in ann_df.columns
+            else "N/A"
+        )
+        n_sym = (
+            str(ann_df["symbol"].nunique())
+            if not ann_df.empty and "symbol" in ann_df.columns
+            else "0"
+        )
+        status_table.add_row(
+            "PSX Announcements", str(ann_file), str(n_ann), ann_span, f"{n_sym} symbols"
+        )
+    else:
+        status_table.add_row("PSX Announcements", str(ann_file), "0", "N/A", "0 symbols")
+
+    console.print()
+    console.print(status_table)
+    console.print()
 
 
 if __name__ == "__main__":
