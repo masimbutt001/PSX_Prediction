@@ -12,6 +12,7 @@ STANDARD_DATA_DIRS = [
     "processed/corporate_actions",
     "processed/news",
     "features/technical",
+    "features/news",
     "features/combined",
     "predictions",
     "models",

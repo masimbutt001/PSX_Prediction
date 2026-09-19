@@ -1,5 +1,9 @@
 """PSX Predictor news package: collectors, entity matching, classification, and sentiment NLP."""
 
+from psx_predictor.news.calendar import (
+    PKT_TZ,
+    PSXMarketCalendar,
+)
 from psx_predictor.news.classifier import (
     EventCategory,
     EventClassifier,
@@ -32,6 +36,12 @@ from psx_predictor.news.sentiment import (
     FinancialSentimentAnalyzer,
     SentimentResult,
 )
+from psx_predictor.news.session_aligner import (
+    AlignmentSummary,
+    NewsSessionAligner,
+    SessionAlignment,
+    parse_to_pkt,
+)
 
 __all__ = [
     "RawNewsArticle",
@@ -52,4 +62,10 @@ __all__ = [
     "NewsNLPProcessor",
     "NLPProcessingResult",
     "compute_signal_id",
+    "PSXMarketCalendar",
+    "PKT_TZ",
+    "SessionAlignment",
+    "AlignmentSummary",
+    "NewsSessionAligner",
+    "parse_to_pkt",
 ]

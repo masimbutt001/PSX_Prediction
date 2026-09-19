@@ -1376,6 +1376,90 @@ def news_process(
         console.print()
 
 
+@news_app.command("align")
+def news_align(
+    symbols: Annotated[
+        Optional[str],
+        typer.Option(
+            "--symbols",
+            "-s",
+            help=(
+                "Comma-separated stock symbols (e.g. 'OGDC,PPL') to compute "
+                "daily session features for. Defaults to all active universe symbols."
+            ),
+        ),
+    ] = None,
+    dry_run: Annotated[
+        bool,
+        typer.Option(
+            "--dry-run",
+            help="Compute market session alignments without writing to disk",
+        ),
+    ] = False,
+) -> None:
+    """Align processed news to PSX market sessions and generate point-in-time daily features."""
+    from psx_predictor.news.session_aligner import NewsSessionAligner
+
+    target_syms = [s.strip().upper() for s in symbols.split(",") if s.strip()] if symbols else None
+    console.print(
+        Panel.fit(
+            "[bold cyan]PSX Market Session News Aligner (Zero Lookahead)[/bold cyan]\n"
+            f"Mode: {'[magenta]DRY-RUN[/magenta]' if dry_run else '[green]PERSIST[/green]'} | "
+            f"Target Symbols: {', '.join(target_syms) if target_syms else 'All Active Universe'}",
+            border_style="cyan",
+        )
+    )
+
+    aligner = NewsSessionAligner()
+    summary = aligner.align_and_persist(target_symbols=target_syms, dry_run=dry_run)
+
+    if summary.total_signals_aligned == 0:
+        console.print(
+            "[bold yellow]No signals aligned.[/bold yellow] "
+            "Please run `psx news fetch` and `psx news process` first."
+        )
+        return
+
+    # Summary Table
+    res_table = Table(title="PSX Market Session Alignment Summary", box=box.ROUNDED)
+    res_table.add_column("Metric", style="bold cyan")
+    res_table.add_column("Value", justify="right", style="bold green")
+
+    res_table.add_row("Total Signals Aligned", f"{summary.total_signals_aligned:,}")
+    res_table.add_row(
+        "Intraday Signals (Rolled to Next Window)", f"{summary.intraday_signals_count:,}"
+    )
+    res_table.add_row("Off-Hours / Pre-Market Signals", f"{summary.after_hours_signals_count:,}")
+    res_table.add_row("Trading Sessions Covered", f"{summary.trading_dates_covered}")
+    res_table.add_row(
+        "Session Date Span", f"{summary.earliest_session} -> {summary.latest_session}"
+    )
+    res_table.add_row("Daily Feature Records Generated", f"{summary.daily_feature_records:,}")
+    res_table.add_row("Symbols Enriched", f"{len(summary.symbols_covered)}")
+
+    console.print()
+    console.print(res_table)
+
+    # Breakdown by Session Type
+    if summary.session_type_distribution:
+        breakdown_table = Table(title="Session Window Distribution", box=box.SIMPLE_HEAVY)
+        breakdown_table.add_column("Session Window Type", style="bold magenta")
+        breakdown_table.add_column("Signals Count", justify="right", style="cyan")
+
+        for s_type, cnt in sorted(
+            summary.session_type_distribution.items(), key=lambda x: x[1], reverse=True
+        ):
+            breakdown_table.add_row(s_type, str(cnt))
+
+        console.print()
+        console.print(breakdown_table)
+
+    console.print(
+        "\n[bold green]SUCCESS: Market session alignment completed "
+        "with zero lookahead bias![/bold green]\n"
+    )
+
+
 @news_app.command("status")
 def news_status() -> None:
     """Display inventory of collected raw news articles and official announcements."""
@@ -1384,13 +1468,16 @@ def news_status() -> None:
     news_file = paths["raw_news"] / "news.parquet"
     ann_file = paths["raw_announcements"] / "announcements.parquet"
     signals_file = paths["processed_news"] / "news_signals.parquet"
+    aligned_file = paths["processed_news"] / "aligned_signals.parquet"
+    features_dir = paths.get("features_news", paths["root"] / "features" / "news")
+    features_file = features_dir / "daily_news_features.parquet"
 
     status_table = Table(title="News & Corporate Announcements Storage Status", box=box.ROUNDED)
-    status_table.add_column("Dataset", style="bold cyan")
-    status_table.add_column("Path", style="dim")
-    status_table.add_column("Total Records", justify="right", style="bold green")
-    status_table.add_column("Date Span", justify="center")
-    status_table.add_column("Unique Entities", justify="center")
+    status_table.add_column("Dataset", style="bold cyan", no_wrap=True)
+    status_table.add_column("File", style="dim", no_wrap=True)
+    status_table.add_column("Records", justify="right", style="bold green")
+    status_table.add_column("Date Span", justify="center", no_wrap=True)
+    status_table.add_column("Entities", justify="center", no_wrap=True)
 
     if news_file.exists():
         news_df = read_parquet(news_file)
@@ -1406,10 +1493,10 @@ def news_status() -> None:
             else "0"
         )
         status_table.add_row(
-            "Financial RSS News", str(news_file), str(n_news), news_span, f"{n_src} sources"
+            "Financial RSS News", news_file.name, str(n_news), news_span, f"{n_src} sources"
         )
     else:
-        status_table.add_row("Financial RSS News", str(news_file), "0", "N/A", "0 sources")
+        status_table.add_row("Financial RSS News", news_file.name, "0", "N/A", "0 sources")
 
     if ann_file.exists():
         ann_df = read_parquet(ann_file)
@@ -1425,10 +1512,10 @@ def news_status() -> None:
             else "0"
         )
         status_table.add_row(
-            "PSX Announcements", str(ann_file), str(n_ann), ann_span, f"{n_sym} symbols"
+            "PSX Announcements", ann_file.name, str(n_ann), ann_span, f"{n_sym} symbols"
         )
     else:
-        status_table.add_row("PSX Announcements", str(ann_file), "0", "N/A", "0 symbols")
+        status_table.add_row("PSX Announcements", ann_file.name, "0", "N/A", "0 symbols")
 
     if signals_file.exists():
         sig_df = read_parquet(signals_file)
@@ -1445,13 +1532,59 @@ def news_status() -> None:
         )
         status_table.add_row(
             "Processed News Signals",
-            str(signals_file),
+            signals_file.name,
             str(n_sig),
             sig_span,
             f"{n_sig_sym} symbols",
         )
     else:
-        status_table.add_row("Processed News Signals", str(signals_file), "0", "N/A", "0 symbols")
+        status_table.add_row("Processed News Signals", signals_file.name, "0", "N/A", "0 symbols")
+
+    if aligned_file.exists():
+        al_df = read_parquet(aligned_file)
+        n_al = len(al_df)
+        al_span = (
+            f"{al_df['session_target_date'].min()} -> {al_df['session_target_date'].max()}"
+            if not al_df.empty and "session_target_date" in al_df.columns
+            else "N/A"
+        )
+        n_al_sym = (
+            str(al_df["primary_symbol"].dropna().nunique())
+            if not al_df.empty and "primary_symbol" in al_df.columns
+            else "0"
+        )
+        status_table.add_row(
+            "Aligned News Signals",
+            aligned_file.name,
+            str(n_al),
+            al_span,
+            f"{n_al_sym} symbols",
+        )
+    else:
+        status_table.add_row("Aligned News Signals", aligned_file.name, "0", "N/A", "0 symbols")
+
+    if features_file.exists():
+        feat_df = read_parquet(features_file)
+        n_feat = len(feat_df)
+        feat_span = (
+            f"{feat_df['session_date'].min()} -> {feat_df['session_date'].max()}"
+            if not feat_df.empty and "session_date" in feat_df.columns
+            else "N/A"
+        )
+        n_feat_sym = (
+            str(feat_df["symbol"].nunique())
+            if not feat_df.empty and "symbol" in feat_df.columns
+            else "0"
+        )
+        status_table.add_row(
+            "Daily News Features",
+            features_file.name,
+            str(n_feat),
+            feat_span,
+            f"{n_feat_sym} symbols",
+        )
+    else:
+        status_table.add_row("Daily News Features", features_file.name, "0", "N/A", "0 symbols")
 
     console.print()
     console.print(status_table)
