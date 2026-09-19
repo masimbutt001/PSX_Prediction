@@ -833,11 +833,8 @@ def features_merge(
         target_syms = [symbol.strip().upper()]
     elif symbols:
         target_syms = [s.strip().upper() for s in symbols.split(",") if s.strip()]
-    elif not all_symbols:
-        console.print("[bold yellow]Please specify --symbol, --symbols, or --all.[/bold yellow]")
-        raise typer.Exit(code=1)
 
-    sym_display = ", ".join(target_syms) if target_syms else "All Processed Symbols"
+    sym_display = ", ".join(target_syms) if target_syms else "All Available Symbols"
     console.print(
         f"Starting multi-modal feature merge | Target(s): [cyan]{sym_display}[/cyan] | "
         f"Mode: {'[magenta]DRY-RUN[/magenta]' if dry_run else '[green]PERSIST[/green]'}"
@@ -903,10 +900,11 @@ def model_train(
         str,
         typer.Option(
             "--model",
+            "--model-type",
             "-m",
             help=(
                 "Model family: 'all', 'baselines', 'logistic', "
-                "'random_forest', 'xgboost', 'trees', 'ensemble'"
+                "'random_forest', 'xgboost', 'trees', 'ensemble', 'stacking'"
             ),
         ),
     ] = "all",
