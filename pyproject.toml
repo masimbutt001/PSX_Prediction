@@ -29,6 +29,8 @@ dependencies = [
     "xgboost>=3.4.1",
     "fastapi>=0.110.0",
     "uvicorn>=0.29.0",
+    "streamlit>=1.33.0",
+    "plotly>=5.20.0",
 ]
 
 [project.optional-dependencies]

@@ -2,10 +2,10 @@
 
 from pathlib import Path
 
-from fastapi.testclient import TestClient
 import numpy as np
 import pandas as pd
 import pytest
+from fastapi.testclient import TestClient
 from typer.testing import CliRunner
 
 from psx_predictor.api.app import create_app

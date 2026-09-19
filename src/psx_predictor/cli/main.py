@@ -1925,5 +1925,66 @@ def api_start(
     )
 
 
+@app.command("dashboard")
+def dashboard_start(
+    host: Annotated[
+        str,
+        typer.Option("--host", "-h", help="Host IP address to bind Streamlit server"),
+    ] = "127.0.0.1",
+    port: Annotated[
+        int,
+        typer.Option("--port", "-p", help="Port to listen on"),
+    ] = 8501,
+    dry_run: Annotated[
+        bool,
+        typer.Option(
+            "--dry-run",
+            help="Verify dashboard files and configuration without starting server",
+        ),
+    ] = False,
+) -> None:
+    """Launch the interactive Streamlit research dashboard."""
+    import subprocess
+    import sys
+
+    dashboard_file = Path(__file__).parent.parent / "dashboard" / "app.py"
+
+    if not dashboard_file.exists():
+        console.print(
+            f"[bold red]Error:[/bold red] Dashboard entrypoint not found at {dashboard_file}"
+        )
+        raise typer.Exit(code=1)
+
+    console.print(
+        f"Initializing PSX Predictor Streamlit Dashboard on [cyan]{host}:{port}[/cyan] | "
+        f"Mode: {'[magenta]DRY-RUN[/magenta]' if dry_run else '[green]SERVE[/green]'}"
+    )
+
+    if dry_run:
+        console.print(
+            f"[bold green]SUCCESS:[/bold green] Dashboard entrypoint verified at "
+            f"[cyan]{dashboard_file}[/cyan]. Ready to serve!"
+        )
+        return
+
+    cmd = [
+        sys.executable,
+        "-m",
+        "streamlit",
+        "run",
+        str(dashboard_file),
+        "--server.port",
+        str(port),
+        "--server.address",
+        host,
+    ]
+    console.print(f"[bold green]Starting Streamlit UI at:[/bold green] http://{host}:{port}")
+    try:
+        subprocess.run(cmd, check=True)
+    except KeyboardInterrupt:
+        console.print("\n[yellow]Dashboard stopped by user.[/yellow]")
+
+
 if __name__ == "__main__":
     app()
+
