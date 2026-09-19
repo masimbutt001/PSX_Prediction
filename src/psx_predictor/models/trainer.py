@@ -13,6 +13,7 @@ from psx_predictor.models.baselines import (
     NaivePersistenceClassifier,
     SMACrossoverClassifier,
 )
+from psx_predictor.models.ensemble import MultiModalStackingEnsemble
 from psx_predictor.models.evaluation import evaluate_classifier
 from psx_predictor.models.linear import LogisticRegressionBaseline
 from psx_predictor.models.split import chronological_train_test_split
@@ -31,8 +32,18 @@ class ModelTrainer:
         else:
             self.storage_paths = storage_paths
 
-    def load_feature_dataset(self, symbol: str) -> pd.DataFrame:
-        """Load technical feature dataset with targets for the given symbol."""
+    def load_feature_dataset(self, symbol: str, combined: bool = False) -> pd.DataFrame:
+        """Load technical or combined feature dataset with targets for the given symbol."""
+        if combined:
+            comb_path = self.storage_paths["features_combined"] / f"{symbol}_combined.parquet"
+            if not comb_path.exists():
+                from psx_predictor.features.merger import MultiModalFeatureMerger
+
+                logger.info(f"[{symbol}] Combined features not found. Merging modalities...")
+                merger = MultiModalFeatureMerger(self.storage_paths)
+                return merger.merge_symbol(symbol, save=True)
+            return read_parquet(comb_path)
+
         feat_path = self.storage_paths["features_technical"] / f"{symbol}_tech_features.parquet"
         if not feat_path.exists():
             raise FileNotFoundError(
@@ -49,11 +60,12 @@ class ModelTrainer:
         train_ratio: float = 0.8,
         save_models: bool = False,
     ) -> list[ModelEvaluationResult]:
-        """Train and evaluate baseline and linear models on chronological split.
+        """Train and evaluate baseline, linear, tree, or ensemble models on chronological split.
 
         Args:
             symbol: Ticker symbol (e.g. 'OGDC').
-            model_type: 'baselines', 'logistic', 'random_forest', 'xgboost', 'trees', or 'all'.
+            model_type: 'baselines', 'logistic', 'random_forest', 'xgboost', 'trees',
+                        'ensemble', or 'all'.
             target_col: Prediction target column.
             train_ratio: Out-of-sample split ratio (default: 0.8).
             save_models: Whether to serialize fitted models to disk.
@@ -61,8 +73,30 @@ class ModelTrainer:
         Returns:
             List of ModelEvaluationResult for each evaluated model.
         """
-        logger.info(f"[{symbol}] Loading features and prediction targets...")
-        df = self.load_feature_dataset(symbol)
+        m_type = model_type.lower().strip()
+        is_ensemble = m_type in ("ensemble", "stacking")
+
+        logger.info(
+            f"[{symbol}] Loading features and targets (combined={is_ensemble})..."
+        )
+        df = self.load_feature_dataset(symbol, combined=is_ensemble)
+
+        feature_cols: Optional[list[str]] = None
+        if is_ensemble:
+            exclude = {
+                "symbol",
+                "trade_date",
+                "session_date",
+                target_col,
+                "target_next_day_dir",
+                "target_next_day_3class",
+                "target_return_5d",
+            }
+            feature_cols = [
+                c
+                for c in df.columns
+                if c not in exclude and pd.api.types.is_numeric_dtype(df[c].dtype)
+            ]
 
         logger.info(
             f"[{symbol}] Splitting {len(df)} sessions chronologically "
@@ -72,6 +106,7 @@ class ModelTrainer:
             df=df,
             target_col=target_col,
             train_ratio=train_ratio,
+            feature_cols=feature_cols,
         )
 
         logger.info(
@@ -82,8 +117,10 @@ class ModelTrainer:
         )
 
         # Select models to evaluate
-        m_type = model_type.lower().strip()
         models_to_run: list[BaseModel] = []
+        if is_ensemble:
+            models_to_run.append(MultiModalStackingEnsemble())
+
         if m_type in ("baselines", "all"):
             models_to_run.extend(
                 [
@@ -105,7 +142,7 @@ class ModelTrainer:
         if not models_to_run:
             raise ValueError(
                 f"Unknown model_type '{model_type}'. "
-                "Choose baselines, logistic, random_forest, xgboost, trees, or all."
+                "Choose baselines, logistic, random_forest, xgboost, trees, ensemble, or all."
             )
 
         results: list[ModelEvaluationResult] = []

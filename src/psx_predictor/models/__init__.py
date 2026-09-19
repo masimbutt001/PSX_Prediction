@@ -11,6 +11,7 @@ from psx_predictor.models.comparator import (
     ModelComparator,
     display_comparison_table,
 )
+from psx_predictor.models.ensemble import MultiModalStackingEnsemble
 from psx_predictor.models.evaluation import display_evaluation_table, evaluate_classifier
 from psx_predictor.models.linear import LogisticRegressionBaseline
 from psx_predictor.models.split import (
@@ -20,6 +21,7 @@ from psx_predictor.models.split import (
 )
 from psx_predictor.models.trainer import ModelTrainer
 from psx_predictor.models.trees import RandomForestBaseline, XGBoostBaseline
+from psx_predictor.models.weighting import OutOfFoldWeightOptimizer, TimeSeriesFold
 
 __all__ = [
     "BaseModel",
@@ -30,6 +32,9 @@ __all__ = [
     "LogisticRegressionBaseline",
     "RandomForestBaseline",
     "XGBoostBaseline",
+    "MultiModalStackingEnsemble",
+    "OutOfFoldWeightOptimizer",
+    "TimeSeriesFold",
     "ChronologicalSplit",
     "chronological_train_test_split",
     "DEFAULT_TECHNICAL_FEATURES",

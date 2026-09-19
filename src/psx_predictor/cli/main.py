@@ -897,7 +897,8 @@ def model_train(
             "--model",
             "-m",
             help=(
-                "Model family: 'all', 'baselines', 'logistic', 'random_forest', 'xgboost', 'trees'"
+                "Model family: 'all', 'baselines', 'logistic', "
+                "'random_forest', 'xgboost', 'trees', 'ensemble'"
             ),
         ),
     ] = "all",
