@@ -10,6 +10,7 @@ STANDARD_DATA_DIRS = [
     "raw/macro",
     "processed/prices",
     "processed/corporate_actions",
+    "processed/news",
     "features/technical",
     "features/combined",
     "predictions",

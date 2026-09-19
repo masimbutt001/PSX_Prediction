@@ -1282,6 +1282,100 @@ def news_fetch(
             console.print(ann_preview)
 
 
+@news_app.command("process")
+def news_process(
+    dry_run: Annotated[
+        bool,
+        typer.Option(
+            "--dry-run",
+            help="Extract NLP signals without persisting to storage",
+        ),
+    ] = False,
+) -> None:
+    """Extract entities, event categories, and financial sentiment from collected texts."""
+    from psx_predictor.news.processor import NewsNLPProcessor
+
+    console.print(
+        "Starting news & announcements NLP signal extraction | "
+        f"Mode: {'[magenta]DRY-RUN[/magenta]' if dry_run else '[green]PERSIST[/green]'}"
+    )
+
+    processor = NewsNLPProcessor()
+    res = processor.process_all(dry_run=dry_run)
+
+    # 1. Summary table
+    table = Table(title="News NLP Signal Extraction Summary", box=box.ROUNDED)
+    table.add_column("Metric", style="cyan")
+    table.add_column("Count", justify="right", style="bold white")
+
+    table.add_row("Raw News Articles Inspected", str(res.total_news_inspected))
+    table.add_row("Raw Announcements Inspected", str(res.total_announcements_inspected))
+    table.add_row(
+        "[bold green]New Structured Signals Created[/bold green]",
+        f"[bold green]{res.new_signals_created}[/bold green]",
+    )
+    table.add_row(
+        "[dim yellow]Duplicates Skipped[/dim yellow]",
+        f"[dim yellow]{res.duplicates_skipped}[/dim yellow]",
+    )
+    console.print()
+    console.print(table)
+
+    # 2. Event category breakdown
+    if res.category_distribution:
+        cat_table = Table(title="Event Categories Breakdown", box=box.ROUNDED)
+        cat_table.add_column("Event Category", style="bold magenta")
+        cat_table.add_column("Occurrences", justify="right", style="white")
+
+        for cat, count in sorted(
+            res.category_distribution.items(), key=lambda x: x[1], reverse=True
+        ):
+            cat_table.add_row(cat, str(count))
+        console.print()
+        console.print(cat_table)
+
+    # 3. Sentiment breakdown
+    if res.sentiment_distribution:
+        sent_table = Table(title="Sentiment Polarity Breakdown", box=box.ROUNDED)
+        sent_table.add_column("Sentiment Label", style="bold white")
+        sent_table.add_column("Signals Count", justify="right")
+
+        for label in ("POSITIVE", "NEGATIVE", "NEUTRAL"):
+            cnt = res.sentiment_distribution.get(label, 0)
+            color = "green" if label == "POSITIVE" else ("red" if label == "NEGATIVE" else "yellow")
+            sent_table.add_row(f"[{color}]{label}[/{color}]", f"[{color}]{cnt}[/{color}]")
+        console.print()
+        console.print(sent_table)
+
+    # 4. Preview sample signals
+    if res.signals:
+        preview_table = Table(
+            title="Sample Processed Signals Preview (Latest 5)", box=box.SIMPLE_HEAVY
+        )
+        preview_table.add_column("Symbol", style="bold cyan")
+        preview_table.add_column("Category", style="magenta")
+        preview_table.add_column("Sentiment", justify="center")
+        preview_table.add_column("Score", justify="right")
+        preview_table.add_column("Headline", style="white")
+
+        for sig in res.signals[:5]:
+            color = (
+                "green"
+                if sig.sentiment_label == "POSITIVE"
+                else ("red" if sig.sentiment_label == "NEGATIVE" else "yellow")
+            )
+            preview_table.add_row(
+                sig.primary_symbol or "MACRO",
+                sig.event_category,
+                f"[{color}]{sig.sentiment_label}[/{color}]",
+                f"{sig.sentiment_score:+.2f}",
+                sig.headline[:55],
+            )
+        console.print()
+        console.print(preview_table)
+        console.print()
+
+
 @news_app.command("status")
 def news_status() -> None:
     """Display inventory of collected raw news articles and official announcements."""
@@ -1289,6 +1383,7 @@ def news_status() -> None:
     paths = get_storage_paths(cfg.settings.data_dir)
     news_file = paths["raw_news"] / "news.parquet"
     ann_file = paths["raw_announcements"] / "announcements.parquet"
+    signals_file = paths["processed_news"] / "news_signals.parquet"
 
     status_table = Table(title="News & Corporate Announcements Storage Status", box=box.ROUNDED)
     status_table.add_column("Dataset", style="bold cyan")
@@ -1334,6 +1429,29 @@ def news_status() -> None:
         )
     else:
         status_table.add_row("PSX Announcements", str(ann_file), "0", "N/A", "0 symbols")
+
+    if signals_file.exists():
+        sig_df = read_parquet(signals_file)
+        n_sig = len(sig_df)
+        sig_span = (
+            f"{sig_df['published_at'].min()[:10]} -> {sig_df['published_at'].max()[:10]}"
+            if not sig_df.empty and "published_at" in sig_df.columns
+            else "N/A"
+        )
+        n_sig_sym = (
+            str(sig_df["primary_symbol"].dropna().nunique())
+            if not sig_df.empty and "primary_symbol" in sig_df.columns
+            else "0"
+        )
+        status_table.add_row(
+            "Processed News Signals",
+            str(signals_file),
+            str(n_sig),
+            sig_span,
+            f"{n_sig_sym} symbols",
+        )
+    else:
+        status_table.add_row("Processed News Signals", str(signals_file), "0", "N/A", "0 symbols")
 
     console.print()
     console.print(status_table)
