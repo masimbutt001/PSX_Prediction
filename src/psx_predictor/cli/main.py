@@ -795,6 +795,96 @@ def features_build(
             console.print(f"[bold green]Saved feature manifest to:[/bold green] {manifest_file}")
 
 
+@features_app.command("merge")
+def features_merge(
+    symbol: Annotated[
+        Optional[str],
+        typer.Option("--symbol", "-s", help="Single PSX symbol to merge (e.g. 'OGDC')"),
+    ] = None,
+    symbols: Annotated[
+        Optional[str],
+        typer.Option(
+            "--symbols",
+            help="Comma-separated symbols to merge (e.g. 'OGDC,PPL,SYS').",
+        ),
+    ] = None,
+    all_symbols: Annotated[
+        bool,
+        typer.Option("--all", "-a", help="Merge all available symbols in processed storage"),
+    ] = False,
+    dry_run: Annotated[
+        bool,
+        typer.Option("--dry-run", help="Compute combined features without saving to disk"),
+    ] = False,
+) -> None:
+    """Merge price technical indicators, news sentiment, and macro series."""
+    from psx_predictor.features.merger import MultiModalFeatureMerger
+
+    target_syms: Optional[list[str]] = None
+    if symbol:
+        target_syms = [symbol.strip().upper()]
+    elif symbols:
+        target_syms = [s.strip().upper() for s in symbols.split(",") if s.strip()]
+    elif not all_symbols:
+        console.print("[bold yellow]Please specify --symbol, --symbols, or --all.[/bold yellow]")
+        raise typer.Exit(code=1)
+
+    sym_display = ", ".join(target_syms) if target_syms else "All Processed Symbols"
+    console.print(
+        f"Starting multi-modal feature merge | Target(s): [cyan]{sym_display}[/cyan] | "
+        f"Mode: {'[magenta]DRY-RUN[/magenta]' if dry_run else '[green]PERSIST[/green]'}"
+    )
+
+    merger = MultiModalFeatureMerger()
+    summary = merger.merge_universe(symbols=target_syms, save=not dry_run)
+
+    table = Table(title="Multi-Modal Feature Merge Summary", box=box.ROUNDED)
+    table.add_column("Symbol", style="bold cyan")
+    table.add_column("Status", justify="center")
+    table.add_column("Sessions", justify="right")
+    table.add_column("Feats (T/N/M/I)", justify="center")
+    table.add_column("Date Span", justify="center")
+
+    for sym, res in summary["symbols"].items():
+        st = res["status"]
+        if st == "SUCCESS":
+            status_style = "[bold green]SUCCESS[/bold green]"
+        elif st == "SKIPPED":
+            status_style = "[yellow]SKIPPED[/yellow]"
+        else:
+            status_style = f"[bold red]FAILED[/bold red] ({res.get('error_message', '')})"
+
+        feats_breakdown = (
+            f"{res['tech_features_count']}/{res['news_features_count']}/"
+            f"{res['macro_features_count']}/{res['interaction_features_count']}"
+            if st == "SUCCESS"
+            else "N/A"
+        )
+        span_str = (
+            f"{res['start_date']} -> {res['end_date']}" if res.get("start_date") else "N/A"
+        )
+
+        table.add_row(
+            sym,
+            status_style,
+            str(res["total_records"]),
+            feats_breakdown,
+            span_str,
+        )
+
+    console.print(table)
+
+    summary_panel = Panel(
+        f"[bold]Total Symbols:[/bold] {summary['total_requested']}  |  "
+        f"[bold green]Successful:[/bold green] {summary['successful']}  |  "
+        f"[bold red]Failed:[/bold red] {summary['failed']}\n"
+        f"[bold cyan]Total Combined Records:[/bold cyan] {summary['total_records']:,}",
+        title="Multi-Modal Merge Overview",
+        border_style="cyan",
+    )
+    console.print(summary_panel)
+
+
 @model_app.command("train")
 def model_train(
     symbol: Annotated[
@@ -928,6 +1018,73 @@ def model_compare(
         raise typer.Exit(code=1) from exc
 
     display_comparison_table(summaries=summaries, symbol=clean_sym, console=console)
+
+
+@model_app.command("ablation")
+def model_ablation(
+    symbol: Annotated[
+        str,
+        typer.Option("--symbol", "-s", help="PSX ticker symbol (e.g. OGDC)"),
+    ],
+    model: Annotated[
+        str,
+        typer.Option(
+            "--model",
+            "-m",
+            help="Model family: 'logistic', 'rf' (Random Forest), or 'xgb' (XGBoost)",
+        ),
+    ] = "logistic",
+    target: Annotated[
+        str,
+        typer.Option(
+            "--target",
+            "-t",
+            help="Prediction target column (e.g. 'target_next_day_dir')",
+        ),
+    ] = "target_next_day_dir",
+    split_ratio: Annotated[
+        float,
+        typer.Option(
+            "--split-ratio",
+            "-r",
+            help="Chronological train split ratio (default: 0.8)",
+        ),
+    ] = 0.8,
+    rf_rate: Annotated[
+        float,
+        typer.Option(
+            "--rf-rate",
+            help="Annual risk-free benchmark rate (default: 0.15 for 15% SBP policy rate)",
+        ),
+    ] = 0.15,
+) -> None:
+    """Run empirical ablation study measuring contributions of News and Macro modalities."""
+    from psx_predictor.features.ablations import AblationStudyRunner
+
+    clean_sym = symbol.strip().upper()
+    console.print(
+        f"Initiating empirical ablation study for [bold cyan]{clean_sym}[/bold cyan] | "
+        f"Model: [yellow]{model.upper()}[/yellow] | Target: [magenta]{target}[/magenta] | "
+        f"Train Split: [green]{split_ratio:.0%}[/green]"
+    )
+
+    runner = AblationStudyRunner()
+    try:
+        results = runner.run_ablation_study(
+            symbol=clean_sym,
+            model_name=model,
+            target_col=target,
+            train_ratio=split_ratio,
+            risk_free_rate=rf_rate,
+        )
+    except FileNotFoundError as fnf:
+        console.print(f"[bold red]Data Error:[/bold red] {fnf}")
+        raise typer.Exit(code=1) from fnf
+    except Exception as exc:
+        console.print(f"[bold red]Ablation Error:[/bold red] {exc}")
+        raise typer.Exit(code=1) from exc
+
+    runner.display_ablation_table(results=results, symbol=clean_sym, console=console)
 
 
 @app.command("backtest")

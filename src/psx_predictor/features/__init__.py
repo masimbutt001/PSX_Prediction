@@ -1,9 +1,18 @@
 """Feature engineering, technical indicator calculation, and feature stores."""
 
+from psx_predictor.features.ablations import (
+    AblationConfig,
+    AblationExperimentResult,
+    AblationStudyRunner,
+)
 from psx_predictor.features.builder import (
     FeatureBuildResult,
     FeatureUniverseResult,
     TechnicalFeatureBuilder,
+)
+from psx_predictor.features.merger import (
+    MergeResult,
+    MultiModalFeatureMerger,
 )
 from psx_predictor.features.targets import (
     compute_all_prediction_targets,
@@ -42,4 +51,9 @@ __all__ = [
     "TechnicalFeatureBuilder",
     "FeatureBuildResult",
     "FeatureUniverseResult",
+    "MultiModalFeatureMerger",
+    "MergeResult",
+    "AblationConfig",
+    "AblationExperimentResult",
+    "AblationStudyRunner",
 ]
