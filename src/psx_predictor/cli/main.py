@@ -37,6 +37,9 @@ news_app = typer.Typer(help="Collect and inspect financial news and PSX announce
 macro_app = typer.Typer(help="Manage macroeconomic indicators (SBP, FX, Brent, CPI)")
 api_app = typer.Typer(help="Manage and serve the REST API")
 schedule_app = typer.Typer(help="Manage automated daily pipeline schedules")
+health_app = typer.Typer(
+    help="System health, probability calibration, and feature drift diagnostics"
+)
 
 app.add_typer(config_app, name="config")
 app.add_typer(storage_app, name="storage")
@@ -48,6 +51,7 @@ app.add_typer(news_app, name="news")
 app.add_typer(macro_app, name="macro")
 app.add_typer(api_app, name="api")
 app.add_typer(schedule_app, name="schedule")
+app.add_typer(health_app, name="health")
 
 console = Console()
 
@@ -2114,6 +2118,194 @@ def schedule_status() -> None:
         )
 
     console.print(history_table)
+
+
+@health_app.command("check")
+def health_check(
+    symbols: Annotated[
+        Optional[str],
+        typer.Option(
+            "--symbols",
+            "-s",
+            help="Comma-separated stock symbols to audit (e.g. 'OGDC,HBL'). Default: all enabled.",
+        ),
+    ] = None,
+    detailed: Annotated[
+        bool,
+        typer.Option("--detailed", help="Display granular per-symbol diagnostic details"),
+    ] = False,
+) -> None:
+    """Perform end-to-end platform health inspection: data feeds, calibration, and feature drift."""
+    from psx_predictor.monitoring.health import HealthStatus, SystemHealthMonitor
+
+    parsed_symbols = (
+        [s.strip().upper() for s in symbols.split(",") if s.strip()]
+        if symbols
+        else None
+    )
+
+    monitor = SystemHealthMonitor()
+    report = monitor.run_health_check(symbols=parsed_symbols)
+
+    # 1. Overall System Status Banner
+    if report.overall_status == HealthStatus.HEALTHY:
+        status_style = "bold green"
+        badge = "[bold green]HEALTHY[/bold green]"
+    elif report.overall_status == HealthStatus.DEGRADED:
+        status_style = "bold yellow"
+        badge = "[bold yellow]DEGRADED[/bold yellow]"
+    else:
+        status_style = "bold red"
+        badge = "[bold red]CRITICAL[/bold red]"
+
+    console.print(
+        Panel(
+            f"Status: {badge} | Checked at: [cyan]{report.timestamp[:19]}[/cyan]\n"
+            f"Data Feed: {report.data_feed.status.value} | "
+            f"Model Calibration: {report.model_audit.status.value} | "
+            f"Feature Drift: {report.drift.status.value}",
+            title=f"[{status_style}]PSX Predictor - System Health Audit[/{status_style}]",
+            border_style=status_style.split()[-1],
+        )
+    )
+    console.print()
+
+    # 2. Diagnostic Summary Table
+    diag_table = Table(
+        title="Subsystem Health Summary",
+        box=box.ROUNDED,
+    )
+    diag_table.add_column("Subsystem", style="cyan")
+    diag_table.add_column("Status", justify="center")
+    diag_table.add_column("Key Metrics / Findings", style="white")
+
+    df_status = (
+        f"[green]{report.data_feed.status.value}[/green]"
+        if report.data_feed.status == HealthStatus.HEALTHY
+        else f"[yellow]{report.data_feed.status.value}[/yellow]"
+    )
+    df_msg = (
+        f"{report.data_feed.healthy_symbols}/{report.data_feed.total_symbols} active feeds ok. "
+        f"Latest: {report.data_feed.latest_date or 'N/A'}"
+    )
+    diag_table.add_row("Data Feeds", df_status, df_msg)
+
+    ma_status = (
+        f"[green]{report.model_audit.status.value}[/green]"
+        if report.model_audit.status == HealthStatus.HEALTHY
+        else f"[yellow]{report.model_audit.status.value}[/yellow]"
+    )
+    brier_str = (
+        f"{report.model_audit.brier_score:.4f}"
+        if report.model_audit.brier_score is not None
+        else "N/A"
+    )
+    ma_msg = (
+        f"{report.model_audit.resolved_predictions}/{report.model_audit.total_predictions} ok | "
+        f"Hit Rate: {report.model_audit.hit_rate * 100:.1f}% | Brier: {brier_str} | "
+        f"Calibration: {report.model_audit.calibration_status}"
+    )
+    diag_table.add_row("Model Reliability", ma_status, ma_msg)
+
+    dr_status = (
+        f"[green]{report.drift.status.value}[/green]"
+        if report.drift.status == HealthStatus.HEALTHY
+        else f"[yellow]{report.drift.status.value}[/yellow]"
+    )
+    retrain_str = (
+        "[bold red]YES (Retraining Recommended)[/bold red]"
+        if report.drift.retraining_recommended
+        else "[green]NO[/green]"
+    )
+    diag_table.add_row(
+        "Distribution Drift",
+        dr_status,
+        f"Evaluated: {report.drift.symbols_evaluated} symbols | "
+        f"Alerts: {len(report.drift.symbols_alerting)} | "
+        f"Warnings: {len(report.drift.symbols_warning)} | "
+        f"Retrain: {retrain_str}",
+    )
+    console.print(diag_table)
+    console.print()
+
+    # 3. Actionable Recommendations
+    console.print("[bold cyan]Actionable Recommendations:[/bold cyan]")
+    for r in report.recommendations:
+        console.print(f"  - {r}")
+
+
+@health_app.command("drift")
+def health_drift(
+    symbol: Annotated[
+        str,
+        typer.Option("--symbol", "-s", help="Stock symbol to audit (e.g. 'OGDC')"),
+    ] = "OGDC",
+    recent_sessions: Annotated[
+        int,
+        typer.Option("--recent-sessions", help="Number of trailing sessions for current window"),
+    ] = 60,
+    reference_sessions: Annotated[
+        int,
+        typer.Option("--reference-sessions", help="Number of historical sessions for baseline"),
+    ] = 250,
+) -> None:
+    """Inspect Population Stability Index (PSI) and KS-test drift for a specific stock."""
+    from psx_predictor.monitoring.drift import DriftStatus, FeatureDriftDetector
+
+    detector = FeatureDriftDetector()
+    sym = symbol.strip().upper()
+    summary = detector.evaluate_symbol_drift(
+        symbol=sym,
+        recent_sessions=recent_sessions,
+        reference_sessions=reference_sessions,
+    )
+
+    if summary.total_features == 0:
+        console.print(
+            f"[dim yellow]No multi-modal or technical features found for {sym}. "
+            f"Run 'psx features build -s {sym}' first.[/dim yellow]"
+        )
+        return
+
+    table_title = (
+        f"Feature Distribution Drift Analysis: {sym} "
+        f"(Recent {recent_sessions} vs Baseline {reference_sessions} sessions)"
+    )
+    table = Table(title=table_title, box=box.ROUNDED)
+    table.add_column("Feature", style="bold cyan")
+    table.add_column("PSI", justify="right", style="yellow")
+    table.add_column("KS Stat", justify="right")
+    table.add_column("KS p-value", justify="right")
+    table.add_column("Status", justify="center")
+    table.add_column("Recommendation", style="dim")
+
+    for item in summary.top_drifting:
+        if item.status == DriftStatus.ALERT:
+            stat_str = "[bold red]ALERT[/bold red]"
+        elif item.status == DriftStatus.WARNING:
+            stat_str = "[bold yellow]WARNING[/bold yellow]"
+        else:
+            stat_str = "[green]STABLE[/green]"
+
+        table.add_row(
+            item.feature_name,
+            f"{item.psi:.4f}",
+            f"{item.ks_stat:.4f}",
+            f"{item.ks_p_value:.4e}",
+            stat_str,
+            item.recommendation,
+        )
+
+    console.print(table)
+    if summary.retraining_recommended:
+        console.print(
+            f"\n[bold red]Significant feature drift detected for {sym}. "
+            f"Model retraining is recommended.[/bold red]"
+        )
+    else:
+        console.print(
+            f"\n[bold green]Feature distributions for {sym} are stable.[/bold green]"
+        )
 
 
 if __name__ == "__main__":
