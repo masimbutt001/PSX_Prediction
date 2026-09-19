@@ -35,6 +35,7 @@ predict_app = typer.Typer(
 )
 news_app = typer.Typer(help="Collect and inspect financial news and PSX announcements")
 macro_app = typer.Typer(help="Manage macroeconomic indicators (SBP, FX, Brent, CPI)")
+api_app = typer.Typer(help="Manage and serve the REST API")
 
 app.add_typer(config_app, name="config")
 app.add_typer(storage_app, name="storage")
@@ -44,6 +45,7 @@ app.add_typer(model_app, name="model")
 app.add_typer(predict_app, name="predict")
 app.add_typer(news_app, name="news")
 app.add_typer(macro_app, name="macro")
+app.add_typer(api_app, name="api")
 
 console = Console()
 
@@ -1869,6 +1871,58 @@ def macro_status() -> None:
     console.print()
     console.print(status_table)
     console.print()
+
+
+@api_app.command("start")
+def api_start(
+    host: Annotated[
+        str,
+        typer.Option("--host", "-h", help="Host IP address to bind server"),
+    ] = "127.0.0.1",
+    port: Annotated[
+        int,
+        typer.Option("--port", "-p", help="Port to listen on"),
+    ] = 8000,
+    reload: Annotated[
+        bool,
+        typer.Option("--reload", help="Enable auto-reload on code changes"),
+    ] = False,
+    dry_run: Annotated[
+        bool,
+        typer.Option("--dry-run", help="Validate app creation without binding port"),
+    ] = False,
+) -> None:
+    """Start the FastAPI backend server using Uvicorn."""
+    import uvicorn
+
+    from psx_predictor.api.app import create_app
+
+    console.print(
+        f"Initializing PSX Predictor REST API on [cyan]{host}:{port}[/cyan] | "
+        f"Reload: {'[green]ON[/green]' if reload else '[dim]OFF[/dim]'} | "
+        f"Mode: {'[magenta]DRY-RUN[/magenta]' if dry_run else '[green]SERVE[/green]'}"
+    )
+
+    app_instance = create_app()
+
+    if dry_run:
+        console.print(
+            f"[bold green]SUCCESS:[/bold green] FastAPI app initialized successfully with "
+            f"[cyan]{len(app_instance.routes)}[/cyan] routes registered. Ready to serve!"
+        )
+        return
+
+    console.print(
+        f"[bold green]Swagger docs available at:[/bold green] http://{host}:{port}/docs\n"
+        f"[bold green]ReDoc available at:[/bold green] http://{host}:{port}/redoc\n"
+    )
+    uvicorn.run(
+        "psx_predictor.api.app:create_app",
+        host=host,
+        port=port,
+        reload=reload,
+        factory=True,
+    )
 
 
 if __name__ == "__main__":
