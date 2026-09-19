@@ -34,6 +34,7 @@ predict_app = typer.Typer(
     invoke_without_command=True,
 )
 news_app = typer.Typer(help="Collect and inspect financial news and PSX announcements")
+macro_app = typer.Typer(help="Manage macroeconomic indicators (SBP, FX, Brent, CPI)")
 
 app.add_typer(config_app, name="config")
 app.add_typer(storage_app, name="storage")
@@ -42,6 +43,7 @@ app.add_typer(features_app, name="features")
 app.add_typer(model_app, name="model")
 app.add_typer(predict_app, name="predict")
 app.add_typer(news_app, name="news")
+app.add_typer(macro_app, name="macro")
 
 console = Console()
 
@@ -1585,6 +1587,126 @@ def news_status() -> None:
         )
     else:
         status_table.add_row("Daily News Features", features_file.name, "0", "N/A", "0 symbols")
+
+    console.print()
+    console.print(status_table)
+    console.print()
+
+
+@macro_app.command("update")
+def macro_update(
+    dry_run: Annotated[
+        bool,
+        typer.Option(
+            "--dry-run",
+            help="Fetch and align macro series without persisting to disk",
+        ),
+    ] = False,
+) -> None:
+    """Fetch macroeconomic indicators, align to PSX sessions, and update daily features."""
+    from psx_predictor.macro.storage import MacroStorage
+
+    console.print(
+        Panel.fit(
+            "[bold cyan]Macroeconomic Ingestion & Temporal Alignment (Zero Lookahead)[/bold cyan]\n"
+            f"Mode: {'[magenta]DRY-RUN[/magenta]' if dry_run else '[green]PERSIST[/green]'}",
+            border_style="cyan",
+        )
+    )
+
+    storage = MacroStorage()
+    summary = storage.update(dry_run=dry_run)
+
+    if summary.total_raw_points_collected == 0:
+        console.print("[bold yellow]No macro observations collected.[/bold yellow]")
+        return
+
+    res_table = Table(title="Macroeconomic Data Ingestion Summary", box=box.ROUNDED)
+    res_table.add_column("Metric", style="bold cyan")
+    res_table.add_column("Value", justify="right", style="bold green")
+
+    res_table.add_row("Raw Data Points Collected", f"{summary.total_raw_points_collected:,}")
+    res_table.add_row("Indicators Updated", f"{len(summary.indicators_updated)}")
+    res_table.add_row("Trading Sessions Covered", f"{summary.trading_sessions_covered:,}")
+    res_table.add_row(
+        "Session Date Span", f"{summary.earliest_session} -> {summary.latest_session}"
+    )
+    res_table.add_row("Daily Macro Feature Records", f"{summary.daily_feature_records:,}")
+
+    console.print()
+    console.print(res_table)
+
+    # Latest indicators reading
+    if summary.latest_indicators:
+        ind_table = Table(title="Latest Actionable Macro Indicators", box=box.SIMPLE_HEAVY)
+        ind_table.add_column("Indicator", style="bold magenta")
+        ind_table.add_column("Latest Value", justify="right", style="bold cyan")
+
+        for ind, val in summary.latest_indicators.items():
+            ind_table.add_row(ind, f"{val:,.2f}")
+
+        console.print()
+        console.print(ind_table)
+
+    console.print(
+        "\n[bold green]SUCCESS: Macro update completed with zero lookahead bias![/bold green]\n"
+    )
+
+
+@macro_app.command("status")
+def macro_status() -> None:
+    """Display storage inventory of raw and processed macroeconomic indicators."""
+    cfg = load_config()
+    paths = get_storage_paths(cfg.settings.data_dir)
+    raw_file = paths["raw_macro"] / "macro_raw.parquet"
+    proc_file = paths["processed_macro"] / "macro_daily.parquet"
+
+    status_table = Table(title="Macroeconomic Storage & Indicator Inventory", box=box.ROUNDED)
+    status_table.add_column("Dataset", style="bold cyan")
+    status_table.add_column("Records", justify="right", style="bold green")
+    status_table.add_column("Date Span", justify="center")
+    status_table.add_column("Indicators / Features", justify="center")
+
+    if raw_file.exists():
+        raw_df = read_parquet(raw_file)
+        n_raw = len(raw_df)
+        raw_span = (
+            f"{raw_df['public_release_date'].min()[:10]} -> "
+            f"{raw_df['public_release_date'].max()[:10]}"
+            if not raw_df.empty and "public_release_date" in raw_df.columns
+            else "N/A"
+        )
+        n_ind = (
+            str(raw_df["indicator"].nunique())
+            if not raw_df.empty and "indicator" in raw_df.columns
+            else "0"
+        )
+        status_table.add_row(
+            "Raw Macro Observations",
+            f"{n_raw:,}",
+            raw_span,
+            f"{n_ind} indicators",
+        )
+    else:
+        status_table.add_row("Raw Macro Observations", "0", "N/A", "0 indicators")
+
+    if proc_file.exists():
+        proc_df = read_parquet(proc_file)
+        n_proc = len(proc_df)
+        proc_span = (
+            f"{proc_df['session_date'].min()[:10]} -> {proc_df['session_date'].max()[:10]}"
+            if not proc_df.empty and "session_date" in proc_df.columns
+            else "N/A"
+        )
+        cols = [c for c in proc_df.columns if c != "session_date"]
+        status_table.add_row(
+            "Daily Macro Features",
+            f"{n_proc:,}",
+            proc_span,
+            f"{len(cols)} features",
+        )
+    else:
+        status_table.add_row("Daily Macro Features", "0", "N/A", "0 features")
 
     console.print()
     console.print(status_table)
