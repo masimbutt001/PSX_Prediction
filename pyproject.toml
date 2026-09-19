@@ -31,6 +31,7 @@ dependencies = [
     "uvicorn>=0.29.0",
     "streamlit>=1.33.0",
     "plotly>=5.20.0",
+    "apscheduler>=3.10.4",
 ]
 
 [project.optional-dependencies]

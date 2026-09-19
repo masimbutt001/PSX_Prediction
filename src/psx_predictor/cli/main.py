@@ -36,6 +36,7 @@ predict_app = typer.Typer(
 news_app = typer.Typer(help="Collect and inspect financial news and PSX announcements")
 macro_app = typer.Typer(help="Manage macroeconomic indicators (SBP, FX, Brent, CPI)")
 api_app = typer.Typer(help="Manage and serve the REST API")
+schedule_app = typer.Typer(help="Manage automated daily pipeline schedules")
 
 app.add_typer(config_app, name="config")
 app.add_typer(storage_app, name="storage")
@@ -46,6 +47,7 @@ app.add_typer(predict_app, name="predict")
 app.add_typer(news_app, name="news")
 app.add_typer(macro_app, name="macro")
 app.add_typer(api_app, name="api")
+app.add_typer(schedule_app, name="schedule")
 
 console = Console()
 
@@ -1985,6 +1987,136 @@ def dashboard_start(
         console.print("\n[yellow]Dashboard stopped by user.[/yellow]")
 
 
+@schedule_app.command("run-daily")
+def schedule_run_daily(
+    symbols: Annotated[
+        Optional[str],
+        typer.Option(
+            "--symbols",
+            "-s",
+            help="Comma-separated stock symbols (e.g. 'OGDC,HBL'). Default: all enabled.",
+        ),
+    ] = None,
+    dry_run: Annotated[
+        bool,
+        typer.Option(
+            "--dry-run",
+            help="Simulate EOD pipeline execution without network or disk side effects",
+        ),
+    ] = False,
+    continue_on_error: Annotated[
+        bool,
+        typer.Option(
+            "--continue-on-error",
+            help="Proceed with subsequent pipeline steps if an earlier step fails",
+        ),
+    ] = False,
+) -> None:
+    """Execute the sequential 6-step End-of-Day (EOD) operational pipeline immediately."""
+    from psx_predictor.scheduler.runner import DailyPipelineRunner
+
+    parsed_symbols = (
+        [s.strip().upper() for s in symbols.split(",") if s.strip()]
+        if symbols
+        else None
+    )
+    runner = DailyPipelineRunner(console=console)
+    report = runner.run_daily_pipeline(
+        dry_run=dry_run,
+        continue_on_error=continue_on_error,
+        symbols=parsed_symbols,
+    )
+    if not report.success:
+        raise typer.Exit(code=1)
+
+
+@schedule_app.command("start")
+def schedule_start(
+    daemon: Annotated[
+        bool,
+        typer.Option("--daemon", help="Run scheduler in background non-blocking mode"),
+    ] = False,
+) -> None:
+    """Start the long-running APScheduler process mapped to PSX operational trading sessions."""
+    from psx_predictor.scheduler.runner import DailyPipelineRunner
+
+    runner = DailyPipelineRunner(console=console)
+    runner.start_daemon(blocking=not daemon)
+
+
+@schedule_app.command("status")
+def schedule_status() -> None:
+    """Display scheduled pipeline triggers, market timings, and recent run history."""
+    import json
+
+    from psx_predictor.config.loader import load_config
+    from psx_predictor.storage.paths import get_storage_paths
+
+    cfg = load_config()
+    paths = get_storage_paths(cfg.settings.data_dir)
+    log_file = paths["root"] / "pipeline.log"
+
+    console.print("[bold cyan]PSX Predictor Automated Pipeline Status[/bold cyan]")
+    console.print(f"Timezone: [yellow]{cfg.settings.timezone}[/yellow]")
+    console.print(f"Audit Log: [yellow]{log_file}[/yellow]\n")
+
+    # 1. Schedule Timing Table
+    timing_table = Table(title="Operational Cron Trigger Schedule", box=box.ROUNDED)
+    timing_table.add_column("Session Window", style="cyan")
+    timing_table.add_column("Market Close", style="yellow")
+    timing_table.add_column("EOD Trigger Time", style="bold green")
+    timing_table.add_column("Topological Steps Executed", style="white")
+
+    steps_desc = "Prices -> News -> Macro -> Features -> Predict -> Audit"
+    timing_table.add_row("Monday - Thursday", "15:30 PKT", "16:00 PKT", steps_desc)
+    timing_table.add_row("Friday", "16:30 PKT", "17:00 PKT", steps_desc)
+    console.print(timing_table)
+    console.print()
+
+    # 2. Execution History
+    if not log_file.exists():
+        console.print("[dim yellow]No prior pipeline runs recorded in pipeline.log.[/dim yellow]")
+        return
+
+    runs = []
+    try:
+        with open(log_file, "r", encoding="utf-8") as f:
+            for line in f:
+                if line.strip():
+                    runs.append(json.loads(line.strip()))
+    except Exception as e:
+        console.print(f"[bold red]Error reading pipeline log:[/bold red] {e}")
+        return
+
+    history_table = Table(
+        title=f"Recent Pipeline Execution History (Total Runs: {len(runs)})",
+        box=box.ROUNDED,
+    )
+    history_table.add_column("Timestamp", style="cyan")
+    history_table.add_column("Status", justify="center")
+    history_table.add_column("Duration", justify="right", style="yellow")
+    history_table.add_column("Completed Tasks", style="white")
+
+    for run in runs[-5:]:
+        status_str = (
+            "[bold green]SUCCESS[/bold green]"
+            if run.get("success")
+            else "[bold red]FAILED[/bold red]"
+        )
+        dur = f"{run.get('duration_seconds', 0.0):.2f}s"
+        t_count = len([t for t in run.get("tasks", []) if t.get("status") == "SUCCESS"])
+        tot_t = len(run.get("tasks", []))
+        history_table.add_row(
+            str(run.get("started_at", ""))[:19],
+            status_str,
+            dur,
+            f"{t_count}/{tot_t} steps",
+        )
+
+    console.print(history_table)
+
+
 if __name__ == "__main__":
     app()
+
 
