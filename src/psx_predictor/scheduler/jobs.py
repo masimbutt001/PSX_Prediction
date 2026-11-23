@@ -1,5 +1,6 @@
 """Pipeline step definitions, task records, and cron schedule trigger mappings."""
 
+import datetime
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Optional
@@ -48,6 +49,7 @@ class PipelineRunReport:
     duration_seconds: float
     success: bool
     tasks: list[PipelineTaskResult] = field(default_factory=list)
+    dry_run: bool = False
 
     def to_dict(self) -> dict[str, Any]:
         """Convert full run report to serializable dictionary."""
@@ -56,8 +58,22 @@ class PipelineRunReport:
             "ended_at": self.ended_at,
             "duration_seconds": round(self.duration_seconds, 2),
             "success": self.success,
+            "dry_run": self.dry_run,
             "tasks": [t.to_dict() for t in self.tasks],
         }
+
+
+# Time of day (market timezone) after which the end-of-day run may start.
+EOD_RUN_TIME_MON_THU = datetime.time(16, 0)
+EOD_RUN_TIME_FRI = datetime.time(17, 0)
+
+# A catch-up run retries a failed day at most this many times.
+MAX_RUNS_PER_DAY = 3
+
+
+def eod_run_time(day: datetime.date) -> datetime.time:
+    """Earliest time the EOD pipeline should run on a given weekday (after PSX close)."""
+    return EOD_RUN_TIME_FRI if day.weekday() == 4 else EOD_RUN_TIME_MON_THU
 
 
 def create_cron_triggers(timezone: str = "Asia/Karachi") -> list[CronTrigger]:

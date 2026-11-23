@@ -13,6 +13,7 @@ from psx_predictor.models.base import BaseModel
 from psx_predictor.models.linear import LogisticRegressionBaseline
 from psx_predictor.models.split import DEFAULT_TECHNICAL_FEATURES
 from psx_predictor.models.trees import RandomForestBaseline, XGBoostBaseline
+from psx_predictor.news.calendar import PSXMarketCalendar
 from psx_predictor.predictions.registry import PredictionRecord, PredictionRegistry
 from psx_predictor.storage.parquet_io import read_parquet
 from psx_predictor.storage.paths import ensure_directories
@@ -29,13 +30,11 @@ class LivePredictor:
             self.storage_paths = storage_paths
 
         self.registry = PredictionRegistry(storage_paths=self.storage_paths)
+        self.calendar = PSXMarketCalendar()
 
     def _next_business_day(self, current_date: datetime.date) -> datetime.date:
-        """Calculate next probable PSX trading session date (skipping Saturday & Sunday)."""
-        nxt = current_date + datetime.timedelta(days=1)
-        while nxt.weekday() >= 5:  # 5=Saturday, 6=Sunday
-            nxt += datetime.timedelta(days=1)
-        return nxt
+        """Next PSX trading session after the given date, skipping weekends and PSX holidays."""
+        return self.calendar.next_trading_day(current_date)
 
     def generate_prediction(
         self,

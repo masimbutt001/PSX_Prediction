@@ -1,81 +1,82 @@
-"""Collector for State Bank of Pakistan (SBP) policy rates, KIBOR, and PBS CPI inflation."""
+"""Collector for State Bank of Pakistan (SBP) policy rates, KIBOR, and PBS CPI inflation.
 
+The figures are read from ``config/macro_rates.yaml`` so they can be updated by hand when SBP
+announces a policy decision or PBS publishes CPI, without changing code.
+"""
 
+from pathlib import Path
+from typing import Any, Optional
+
+import yaml
 from loguru import logger
 
+from psx_predictor.config.loader import find_default_config_dir
 from psx_predictor.macro.schemas import MacroDataPoint, MacroIndicatorType
 
-# Official historical SBP Monetary Policy Decisions (observation_date, release_date, rate_pct)
-HISTORICAL_SBP_RATES = [
-    ("2023-06-26", "2023-06-26", 22.00),
-    ("2024-06-10", "2024-06-10", 20.50),
-    ("2024-07-29", "2024-07-29", 19.50),
-    ("2024-09-12", "2024-09-12", 17.50),
-    ("2024-11-04", "2024-11-04", 15.00),
-    ("2024-12-16", "2024-12-16", 13.50),
-    ("2025-01-27", "2025-01-27", 12.50),
-    ("2025-03-10", "2025-03-10", 11.50),
-    ("2025-05-05", "2025-05-05", 11.00),
-    ("2025-07-14", "2025-07-14", 10.50),
-    ("2025-09-15", "2025-09-15", 10.50),
-    ("2025-11-03", "2025-11-03", 10.00),
-    ("2025-12-15", "2025-12-15", 10.00),
-    ("2026-01-26", "2026-01-26", 9.50),
-    ("2026-03-09", "2026-03-09", 9.00),
-    ("2026-05-04", "2026-05-04", 9.00),
-    ("2026-07-13", "2026-07-13", 8.50),
-    ("2026-09-14", "2026-09-14", 8.50),
-]
+MACRO_RATES_FILENAME = "macro_rates.yaml"
 
-# Official monthly Pakistan Bureau of Statistics (PBS) CPI Inflation releases
-# Format: (observation_month_end, public_release_date, cpi_yoy_pct, cpi_mom_pct)
-HISTORICAL_CPI_RELEASES = [
-    ("2024-01-31", "2024-02-01", 28.3, 1.8),
-    ("2024-02-29", "2024-03-01", 23.1, 0.0),
-    ("2024-03-31", "2024-04-01", 20.7, 1.7),
-    ("2024-04-30", "2024-05-02", 17.3, -0.4),
-    ("2024-05-31", "2024-06-03", 11.8, -3.2),
-    ("2024-06-30", "2024-07-01", 12.6, 0.5),
-    ("2024-07-31", "2024-08-01", 11.1, 2.1),
-    ("2024-08-31", "2024-09-02", 9.6, 0.4),
-    ("2024-09-30", "2024-10-01", 6.9, -0.5),
-    ("2024-10-31", "2024-11-01", 7.2, 1.2),
-    ("2024-11-30", "2024-12-02", 4.9, 0.5),
-    ("2024-12-31", "2025-01-01", 4.1, -0.2),
-    ("2025-01-31", "2025-02-03", 4.5, 0.4),
-    ("2025-02-28", "2025-03-03", 4.8, 0.3),
-    ("2025-03-31", "2025-04-01", 5.1, 0.6),
-    ("2025-04-30", "2025-05-02", 5.4, 0.2),
-    ("2025-05-31", "2025-06-02", 5.2, 0.1),
-    ("2025-06-30", "2025-07-01", 5.0, 0.3),
-    ("2025-07-31", "2025-08-01", 5.3, 0.8),
-    ("2025-08-31", "2025-09-01", 5.1, 0.2),
-    ("2025-09-30", "2025-10-01", 4.9, 0.1),
-    ("2025-10-31", "2025-11-03", 5.2, 0.4),
-    ("2025-11-30", "2025-12-01", 5.0, 0.2),
-    ("2025-12-31", "2026-01-01", 4.8, 0.1),
-    ("2026-01-31", "2026-02-02", 4.6, 0.3),
-    ("2026-02-28", "2026-03-02", 4.7, 0.2),
-    ("2026-03-31", "2026-04-01", 4.9, 0.5),
-    ("2026-04-30", "2026-05-04", 5.0, 0.3),
-    ("2026-05-31", "2026-06-01", 4.8, 0.1),
-    ("2026-06-30", "2026-07-01", 4.7, 0.2),
-    ("2026-07-31", "2026-08-03", 4.9, 0.4),
-    ("2026-08-31", "2026-09-01", 4.8, 0.2),
-    ("2026-09-30", "2026-10-01", 4.6, 0.1),
-]
+
+def load_macro_rates(
+    rates_file: Optional[Path] = None,
+) -> tuple[list[tuple[str, str, float]], list[tuple[str, str, float, float]], float]:
+    """Load SBP policy rates, CPI releases and the KIBOR spread from YAML.
+
+    Args:
+        rates_file: Path to the YAML file. Defaults to ``<config dir>/macro_rates.yaml``.
+
+    Returns:
+        (policy_rates, cpi_releases, kibor_spread) where policy_rates holds
+        (observation_date, release_date, rate_pct) and cpi_releases holds
+        (observation_date, release_date, yoy_pct, mom_pct).
+    """
+    path = rates_file or (find_default_config_dir() / MACRO_RATES_FILENAME)
+    if not path.exists():
+        raise FileNotFoundError(
+            f"Macro rates file not found: {path}. "
+            "Create it from the repository's config/macro_rates.yaml."
+        )
+    with open(path, encoding="utf-8") as f:
+        data: dict[str, Any] = yaml.safe_load(f) or {}
+
+    rates = [
+        (str(r["observation_date"]), str(r["release_date"]), float(r["rate_pct"]))
+        for r in data.get("sbp_policy_rates") or []
+    ]
+    cpi = [
+        (
+            str(r["observation_date"]),
+            str(r["release_date"]),
+            float(r["yoy_pct"]),
+            float(r["mom_pct"]),
+        )
+        for r in data.get("cpi_releases") or []
+    ]
+    spread = float(data.get("kibor_spread_over_policy", 0.65))
+    return rates, cpi, spread
 
 
 class SBPMacroCollector:
     """Collects State Bank of Pakistan policy decisions, KIBOR, and PBS CPI data points."""
 
-    def __init__(self, timeout: float = 10.0) -> None:
+    def __init__(self, timeout: float = 10.0, rates_file: Optional[Path] = None) -> None:
         self.timeout = timeout
+        self.rates_file = rates_file
+        self._loaded: Optional[
+            tuple[list[tuple[str, str, float]], list[tuple[str, str, float, float]], float]
+        ] = None
+
+    def _rates(
+        self,
+    ) -> tuple[list[tuple[str, str, float]], list[tuple[str, str, float, float]], float]:
+        if self._loaded is None:
+            self._loaded = load_macro_rates(self.rates_file)
+        return self._loaded
 
     def fetch_policy_rates(self) -> list[MacroDataPoint]:
         """Retrieve SBP policy rate announcement history with exact release dates."""
         points: list[MacroDataPoint] = []
-        for obs, rel, rate in HISTORICAL_SBP_RATES:
+        policy_rates, _, _ = self._rates()
+        for obs, rel, rate in policy_rates:
             points.append(
                 MacroDataPoint(
                     indicator=MacroIndicatorType.SBP_POLICY_RATE.value,
@@ -92,11 +93,14 @@ class SBPMacroCollector:
         return points
 
     def fetch_kibor_rates(self) -> list[MacroDataPoint]:
-        """Generate/collect 6-Month KIBOR benchmarks tracking policy rate with spread."""
+        """Estimate 6-Month KIBOR as the policy rate plus the configured spread.
+
+        This is an approximation, not collected KIBOR data.
+        """
         points: list[MacroDataPoint] = []
-        # KIBOR maintains an active spread between +0.25% and +1.10% over the policy rate
-        for obs, rel, rate in HISTORICAL_SBP_RATES:
-            kibor_val = round(rate + 0.65, 2)
+        policy_rates, _, spread = self._rates()
+        for obs, rel, rate in policy_rates:
+            kibor_val = round(rate + spread, 2)
             points.append(
                 MacroDataPoint(
                     indicator=MacroIndicatorType.KIBOR_6M.value,
@@ -105,8 +109,8 @@ class SBPMacroCollector:
                     value=kibor_val,
                     unit="PERCENT",
                     frequency="DAILY",
-                    source="SBP/FMA",
-                    notes="6-Month Karachi Interbank Offered Rate",
+                    source="Estimated from SBP policy rate",
+                    notes=f"Estimated 6-Month KIBOR: policy rate + {spread} spread",
                 )
             )
         logger.info(f"Loaded {len(points)} KIBOR 6M data points.")
@@ -115,7 +119,8 @@ class SBPMacroCollector:
     def fetch_cpi_inflation(self) -> list[MacroDataPoint]:
         """Retrieve monthly headline CPI inflation figures with public release dates."""
         points: list[MacroDataPoint] = []
-        for obs, rel, yoy, mom in HISTORICAL_CPI_RELEASES:
+        _, cpi_releases, _ = self._rates()
+        for obs, rel, yoy, mom in cpi_releases:
             # YoY CPI
             points.append(
                 MacroDataPoint(

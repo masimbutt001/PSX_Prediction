@@ -1,0 +1,85 @@
+# Runs the PSX end-of-day pipeline in the cloud every weekday, so nothing depends on a
+# laptop being switched on. All data (prices, news, macro, features, predictions, the run
+# log) is kept on the `data-store` branch of this repository.
+#
+# Timing: PSX closes 15:30 PKT Mon-Thu and 16:30 PKT Fri. The job wakes three times each
+# weekday (16:15, 18:15, 20:15 PKT). `--catch-up` makes only the first useful wake-up run:
+# it skips PSX holidays, waits until 17:00 PKT on Fridays, and stops once a run succeeds
+# (a failed day is retried at the next wake-up, up to 3 attempts).
+#
+# Run it by hand: Actions tab -> "Daily PSX pipeline" -> "Run workflow".
+name: Daily PSX pipeline
+
+on:
+  schedule:
+    - cron: "15 11,13,15 * * 1-5"  # UTC; PKT = UTC+5
+  workflow_dispatch:
+    inputs:
+      force:
+        description: "Run now even if today's run already finished (or PSX is closed)"
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: daily-pipeline
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      DATA_BRANCH: data-store
+      TZ: Asia/Karachi
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      - name: Restore saved data
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          remote="https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          if git ls-remote --exit-code --heads "$remote" "$DATA_BRANCH" >/dev/null; then
+            git clone --depth 1 --branch "$DATA_BRANCH" "$remote" data
+          else
+            echo "No saved data yet: this first run downloads about 5 years of history."
+            mkdir -p data
+            git -C data init -b "$DATA_BRANCH"
+            git -C data remote add origin "$remote"
+          fi
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+
+      - name: Install
+        run: uv sync --frozen
+
+      - name: Run daily pipeline
+        env:
+          FORCE: ${{ inputs.force }}
+        run: |
+          if [ "$FORCE" = "true" ]; then
+            uv run psx schedule run-daily --continue-on-error
+          else
+            uv run psx schedule run-daily --catch-up
+          fi
+
+      - name: Save data
+        if: always()
+        run: |
+          cd data
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A -f .
+          if git diff --cached --quiet; then
+            echo "Nothing new to save."
+          else
+            git commit -q -m "data: pipeline run $(date '+%Y-%m-%d %H:%M %Z')"
+            git push origin "HEAD:$DATA_BRANCH"
+          fi

@@ -194,6 +194,19 @@ def storage_status(
         console.print(f"[bold red]DuckDB Engine Error:[/bold red] {e}")
 
 
+@data_app.command("sync")
+def data_sync() -> None:
+    """Download the latest data saved by the cloud daily run (GitHub 'data-store' branch)."""
+    from psx_predictor.config.loader import load_config
+    from psx_predictor.storage.sync import sync_data_store
+
+    result = sync_data_store(Path(load_config().settings.data_dir))
+    style = "green" if result.ok else "yellow"
+    console.print(f"[{style}]{result.message}[/{style}]")
+    if not result.ok:
+        raise typer.Exit(code=1)
+
+
 @data_app.command("inspect")
 def data_inspect(
     file_path: Annotated[
@@ -1946,6 +1959,13 @@ def dashboard_start(
             help="Verify dashboard files and configuration without starting server",
         ),
     ] = False,
+    sync: Annotated[
+        bool,
+        typer.Option(
+            "--sync/--no-sync",
+            help="Download the latest data saved by the cloud daily run before starting",
+        ),
+    ] = True,
 ) -> None:
     """Launch the interactive Streamlit research dashboard."""
     import subprocess
@@ -1970,6 +1990,14 @@ def dashboard_start(
             f"[cyan]{dashboard_file}[/cyan]. Ready to serve!"
         )
         return
+
+    if sync:
+        from psx_predictor.config.loader import load_config
+        from psx_predictor.storage.sync import sync_data_store
+
+        result = sync_data_store(Path(load_config().settings.data_dir))
+        style = "green" if result.ok else "yellow"
+        console.print(f"[{style}]{result.message}[/{style}]")
 
     cmd = [
         sys.executable,
@@ -2013,6 +2041,26 @@ def schedule_run_daily(
             help="Proceed with subsequent pipeline steps if an earlier step fails",
         ),
     ] = False,
+    skip_non_trading_days: Annotated[
+        bool,
+        typer.Option(
+            "--skip-non-trading-days",
+            help=(
+                "Exit without running on weekends and PSX holidays "
+                "(use this when calling from Windows Task Scheduler or cron)"
+            ),
+        ),
+    ] = False,
+    catch_up: Annotated[
+        bool,
+        typer.Option(
+            "--catch-up",
+            help=(
+                "Run only if today's run is due and not yet done: PSX trading day, after "
+                "market close, no successful run logged today. Safe to call every hour."
+            ),
+        ),
+    ] = False,
 ) -> None:
     """Execute the sequential 6-step End-of-Day (EOD) operational pipeline immediately."""
     from psx_predictor.scheduler.runner import DailyPipelineRunner
@@ -2023,12 +2071,18 @@ def schedule_run_daily(
         else None
     )
     runner = DailyPipelineRunner(console=console)
+    if catch_up:
+        caught_up = runner.run_catch_up()
+        if caught_up is not None and not caught_up.success:
+            raise typer.Exit(code=1)
+        return
     report = runner.run_daily_pipeline(
         dry_run=dry_run,
         continue_on_error=continue_on_error,
         symbols=parsed_symbols,
+        skip_non_trading_days=skip_non_trading_days,
     )
-    if not report.success:
+    if report is not None and not report.success:
         raise typer.Exit(code=1)
 
 

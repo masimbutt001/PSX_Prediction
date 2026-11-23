@@ -1,0 +1,65 @@
+# SBP policy rate decisions and PBS CPI releases used as macro features.
+#
+# Edit this file when the State Bank of Pakistan announces a new policy rate or the
+# Pakistan Bureau of Statistics publishes a new CPI figure. Each entry needs the date the
+# figure is about (observation_date) and the date it became public (release_date): a
+# value is only used for trading sessions on or after its release date.
+
+# 6-month KIBOR is not collected yet. It is estimated as the policy rate plus this spread
+# (percentage points). Replace with real KIBOR data when a reliable source is added.
+kibor_spread_over_policy: 0.65
+
+sbp_policy_rates:
+  - {observation_date: "2023-06-26", release_date: "2023-06-26", rate_pct: 22.00}
+  - {observation_date: "2024-06-10", release_date: "2024-06-10", rate_pct: 20.50}
+  - {observation_date: "2024-07-29", release_date: "2024-07-29", rate_pct: 19.50}
+  - {observation_date: "2024-09-12", release_date: "2024-09-12", rate_pct: 17.50}
+  - {observation_date: "2024-11-04", release_date: "2024-11-04", rate_pct: 15.00}
+  - {observation_date: "2024-12-16", release_date: "2024-12-16", rate_pct: 13.50}
+  - {observation_date: "2025-01-27", release_date: "2025-01-27", rate_pct: 12.50}
+  - {observation_date: "2025-03-10", release_date: "2025-03-10", rate_pct: 11.50}
+  - {observation_date: "2025-05-05", release_date: "2025-05-05", rate_pct: 11.00}
+  - {observation_date: "2025-07-14", release_date: "2025-07-14", rate_pct: 10.50}
+  - {observation_date: "2025-09-15", release_date: "2025-09-15", rate_pct: 10.50}
+  - {observation_date: "2025-11-03", release_date: "2025-11-03", rate_pct: 10.00}
+  - {observation_date: "2025-12-15", release_date: "2025-12-15", rate_pct: 10.00}
+  - {observation_date: "2026-01-26", release_date: "2026-01-26", rate_pct: 9.50}
+  - {observation_date: "2026-03-09", release_date: "2026-03-09", rate_pct: 9.00}
+  - {observation_date: "2026-05-04", release_date: "2026-05-04", rate_pct: 9.00}
+  - {observation_date: "2026-07-13", release_date: "2026-07-13", rate_pct: 8.50}
+  - {observation_date: "2026-09-14", release_date: "2026-09-14", rate_pct: 8.50}
+
+cpi_releases:
+  - {observation_date: "2024-01-31", release_date: "2024-02-01", yoy_pct: 28.3, mom_pct: 1.8}
+  - {observation_date: "2024-02-29", release_date: "2024-03-01", yoy_pct: 23.1, mom_pct: 0.0}
+  - {observation_date: "2024-03-31", release_date: "2024-04-01", yoy_pct: 20.7, mom_pct: 1.7}
+  - {observation_date: "2024-04-30", release_date: "2024-05-02", yoy_pct: 17.3, mom_pct: -0.4}
+  - {observation_date: "2024-05-31", release_date: "2024-06-03", yoy_pct: 11.8, mom_pct: -3.2}
+  - {observation_date: "2024-06-30", release_date: "2024-07-01", yoy_pct: 12.6, mom_pct: 0.5}
+  - {observation_date: "2024-07-31", release_date: "2024-08-01", yoy_pct: 11.1, mom_pct: 2.1}
+  - {observation_date: "2024-08-31", release_date: "2024-09-02", yoy_pct: 9.6, mom_pct: 0.4}
+  - {observation_date: "2024-09-30", release_date: "2024-10-01", yoy_pct: 6.9, mom_pct: -0.5}
+  - {observation_date: "2024-10-31", release_date: "2024-11-01", yoy_pct: 7.2, mom_pct: 1.2}
+  - {observation_date: "2024-11-30", release_date: "2024-12-02", yoy_pct: 4.9, mom_pct: 0.5}
+  - {observation_date: "2024-12-31", release_date: "2025-01-01", yoy_pct: 4.1, mom_pct: -0.2}
+  - {observation_date: "2025-01-31", release_date: "2025-02-03", yoy_pct: 4.5, mom_pct: 0.4}
+  - {observation_date: "2025-02-28", release_date: "2025-03-03", yoy_pct: 4.8, mom_pct: 0.3}
+  - {observation_date: "2025-03-31", release_date: "2025-04-01", yoy_pct: 5.1, mom_pct: 0.6}
+  - {observation_date: "2025-04-30", release_date: "2025-05-02", yoy_pct: 5.4, mom_pct: 0.2}
+  - {observation_date: "2025-05-31", release_date: "2025-06-02", yoy_pct: 5.2, mom_pct: 0.1}
+  - {observation_date: "2025-06-30", release_date: "2025-07-01", yoy_pct: 5.0, mom_pct: 0.3}
+  - {observation_date: "2025-07-31", release_date: "2025-08-01", yoy_pct: 5.3, mom_pct: 0.8}
+  - {observation_date: "2025-08-31", release_date: "2025-09-01", yoy_pct: 5.1, mom_pct: 0.2}
+  - {observation_date: "2025-09-30", release_date: "2025-10-01", yoy_pct: 4.9, mom_pct: 0.1}
+  - {observation_date: "2025-10-31", release_date: "2025-11-03", yoy_pct: 5.2, mom_pct: 0.4}
+  - {observation_date: "2025-11-30", release_date: "2025-12-01", yoy_pct: 5.0, mom_pct: 0.2}
+  - {observation_date: "2025-12-31", release_date: "2026-01-01", yoy_pct: 4.8, mom_pct: 0.1}
+  - {observation_date: "2026-01-31", release_date: "2026-02-02", yoy_pct: 4.6, mom_pct: 0.3}
+  - {observation_date: "2026-02-28", release_date: "2026-03-02", yoy_pct: 4.7, mom_pct: 0.2}
+  - {observation_date: "2026-03-31", release_date: "2026-04-01", yoy_pct: 4.9, mom_pct: 0.5}
+  - {observation_date: "2026-04-30", release_date: "2026-05-04", yoy_pct: 5.0, mom_pct: 0.3}
+  - {observation_date: "2026-05-31", release_date: "2026-06-01", yoy_pct: 4.8, mom_pct: 0.1}
+  - {observation_date: "2026-06-30", release_date: "2026-07-01", yoy_pct: 4.7, mom_pct: 0.2}
+  - {observation_date: "2026-07-31", release_date: "2026-08-03", yoy_pct: 4.9, mom_pct: 0.4}
+  - {observation_date: "2026-08-31", release_date: "2026-09-01", yoy_pct: 4.8, mom_pct: 0.2}
+  - {observation_date: "2026-09-30", release_date: "2026-10-01", yoy_pct: 4.6, mom_pct: 0.1}

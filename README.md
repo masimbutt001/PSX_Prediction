@@ -223,6 +223,12 @@ uv run psx macro update
 uv run psx macro show
 ```
 
+SBP policy rates and PBS CPI releases are read from `config/macro_rates.yaml`. Add a line there
+whenever SBP announces a decision or PBS publishes CPI. 6-month KIBOR is currently estimated as
+the policy rate plus the spread set in that file. USD/PKR, Brent and KSE-100 come from Yahoo
+Finance; if Yahoo fails, the previously saved values are kept and the macro step is reported as
+failed (no synthetic data is generated).
+
 ### 8. FastAPI REST Backend (`psx api`)
 ```bash
 # Start the production REST API server (default: http://127.0.0.1:8000)
@@ -260,6 +266,9 @@ uv run psx schedule run-daily
 
 # Run the live pipeline for specific symbols, continuing if non-critical steps fail
 uv run psx schedule run-daily --symbols OGDC,HBL --continue-on-error
+
+# Command for Windows Task Scheduler / cron: does nothing on weekends and PSX holidays
+uv run psx schedule run-daily --continue-on-error --skip-non-trading-days
 
 # Launch the long-running APScheduler process in foreground blocking mode
 uv run psx schedule start
@@ -364,6 +373,28 @@ curl -X POST "http://127.0.0.1:8000/api/v1/backtest/run" \
 ---
 
 ## Automated Daily Operational Routine
+
+### Hands-off setup (recommended): GitHub Actions
+`.github/workflows/daily-pipeline.yml` runs the pipeline in the cloud every weekday after PSX
+closes, so nothing depends on your laptop being on. All data is saved to the repository's
+`data-store` branch, which also serves as a backup. Nothing to install: once the workflow is on
+`main`, it runs by itself. To run it now: GitHub -> Actions -> "Daily PSX pipeline" -> "Run workflow".
+
+On your laptop, `uv run psx dashboard` downloads the latest saved data before it starts
+(or run `uv run psx data sync` yourself).
+
+### Alternative: run on your own laptop
+Use this instead of the cloud run, not as well as it. One-time setup:
+```bash
+# Windows (PowerShell, from the repository folder)
+powershell -ExecutionPolicy Bypass -File scripts\install_laptop_schedule_windows.ps1
+# macOS
+bash scripts/install_laptop_schedule_macos.sh
+```
+Both check every hour and run `psx schedule run-daily --catch-up`, which does the work once per
+PSX trading day after market close, so a run missed while the laptop was off happens later.
+
+### How a run works
 
 The automated operational routine runs on APScheduler aligned with PSX post-market sessions in the `Asia/Karachi` timezone:
 
