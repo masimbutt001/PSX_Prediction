@@ -17,10 +17,12 @@ from rich.table import Table
 from psx_predictor.config.loader import load_config
 from psx_predictor.news.calendar import PSXMarketCalendar
 from psx_predictor.scheduler.jobs import (
+    MAX_RUNS_PER_DAY,
     DailyPipelineStep,
     PipelineRunReport,
     PipelineTaskResult,
     create_cron_triggers,
+    eod_run_time,
 )
 from psx_predictor.storage.paths import ensure_directories
 
@@ -329,6 +331,7 @@ class DailyPipelineRunner:
             duration_seconds=total_duration,
             success=overall_success,
             tasks=tasks,
+            dry_run=dry_run,
         )
 
         # Append execution record to pipeline.log
@@ -343,6 +346,59 @@ class DailyPipelineRunner:
         """Today's date in the configured market timezone (Asia/Karachi by default)."""
         tz = ZoneInfo(self.config.settings.timezone)
         return datetime.datetime.now(tz).date()
+
+    def _runs_logged_on(self, day: datetime.date) -> list[dict[str, Any]]:
+        """Live (non dry-run) runs recorded in pipeline.log that started on `day` (market tz)."""
+        if not self.log_file.exists():
+            return []
+        tz = ZoneInfo(self.config.settings.timezone)
+        runs: list[dict[str, Any]] = []
+        for line in self.log_file.read_text(encoding="utf-8").splitlines():
+            try:
+                entry = json.loads(line)
+                started = datetime.datetime.fromisoformat(entry["started_at"]).astimezone(tz)
+            except (ValueError, KeyError, TypeError):
+                continue
+            if started.date() == day and not entry.get("dry_run", False):
+                runs.append(entry)
+        return runs
+
+    def catch_up_decision(self, now: Optional[datetime.datetime] = None) -> tuple[bool, str]:
+        """Decide whether a catch-up check should start the daily pipeline now.
+
+        Runs when: today is a PSX trading day, the market has closed (16:00 PKT Mon-Thu,
+        17:00 PKT Fri), and today has no successful run yet (a failed day is retried up to
+        MAX_RUNS_PER_DAY times). Safe to call as often as every few minutes.
+
+        Returns:
+            (should_run, reason)
+        """
+        tz = ZoneInfo(self.config.settings.timezone)
+        local_now = (now or datetime.datetime.now(tz)).astimezone(tz)
+        today = local_now.date()
+
+        if not PSXMarketCalendar().is_trading_day(today):
+            return False, f"PSX is closed on {today.isoformat()}."
+        start_at = eod_run_time(today)
+        if local_now.time() < start_at:
+            return False, f"Too early: today's run starts after {start_at.strftime('%H:%M')}."
+        runs = self._runs_logged_on(today)
+        if any(r.get("success") for r in runs):
+            return False, f"Already completed successfully on {today.isoformat()}."
+        if len(runs) >= MAX_RUNS_PER_DAY:
+            return False, f"Gave up after {len(runs)} failed attempts on {today.isoformat()}."
+        return True, f"Running daily pipeline for {today.isoformat()} (attempt {len(runs) + 1})."
+
+    def run_catch_up(
+        self, now: Optional[datetime.datetime] = None
+    ) -> Optional[PipelineRunReport]:
+        """Run the pipeline only if today's run is due and has not completed yet."""
+        should_run, reason = self.catch_up_decision(now)
+        logger.info(reason)
+        self.console.print(f"[cyan]{reason}[/cyan]")
+        if not should_run:
+            return None
+        return self.run_daily_pipeline(continue_on_error=True)
 
     def _scheduled_run(self) -> Optional[PipelineRunReport]:
         """Entry point for cron triggers: skip holidays, keep going past failed steps."""

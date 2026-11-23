@@ -199,3 +199,112 @@ def test_prediction_target_date_skips_psx_holidays(tmp_path: Path) -> None:
     predictor = LivePredictor(storage_paths=ensure_directories(tmp_path / "data"))
     # Thursday 2026-08-13 -> Friday 14 August is Independence Day -> next session Monday 17th
     assert predictor._next_business_day(datetime.date(2026, 8, 13)) == datetime.date(2026, 8, 17)
+
+
+def _log_run(log_file: Path, started_at: str, success: bool, dry_run: bool = False) -> None:
+    import json
+
+    entry = {"started_at": started_at, "success": success, "dry_run": dry_run, "tasks": []}
+    with open(log_file, "a", encoding="utf-8") as f:
+        f.write(json.dumps(entry) + "\n")
+
+
+def test_catch_up_decision(tmp_path: Path) -> None:
+    """Catch-up runs once per trading day after close, retrying failures a few times."""
+    from zoneinfo import ZoneInfo
+
+    pkt = ZoneInfo("Asia/Karachi")
+    log_file = tmp_path / "pipeline.log"
+    runner = DailyPipelineRunner(data_dir=tmp_path / "data", log_path=log_file)
+
+    def at(y: int, m: int, d: int, hh: int, mm: int = 0) -> datetime.datetime:
+        return datetime.datetime(y, m, d, hh, mm, tzinfo=pkt)
+
+    # Weekend and holiday: never
+    assert runner.catch_up_decision(at(2026, 11, 21, 18))[0] is False
+    assert runner.catch_up_decision(at(2026, 8, 14, 18))[0] is False
+    # Before close: Monday 15:59, Friday 16:30 (Friday runs from 17:00)
+    assert runner.catch_up_decision(at(2026, 11, 23, 15, 59))[0] is False
+    assert runner.catch_up_decision(at(2026, 11, 20, 16, 30))[0] is False
+    # After close with nothing logged: run. Laptop woke at 21:00: still runs.
+    assert runner.catch_up_decision(at(2026, 11, 23, 16, 0))[0] is True
+    assert runner.catch_up_decision(at(2026, 11, 23, 21, 0))[0] is True
+
+    # Dry runs don't count; a failed run is retried; a successful run stops further runs
+    _log_run(log_file, "2026-11-23T11:05:00+00:00", success=True, dry_run=True)
+    _log_run(log_file, "2026-11-23T11:05:00+00:00", success=False)
+    assert runner.catch_up_decision(at(2026, 11, 23, 17))[0] is True
+    _log_run(log_file, "2026-11-23T12:05:00+00:00", success=True)
+    should_run, reason = runner.catch_up_decision(at(2026, 11, 23, 18))
+    assert should_run is False and "Already completed" in reason
+    # Next trading day starts fresh
+    assert runner.catch_up_decision(at(2026, 11, 24, 16, 30))[0] is True
+
+    # Three failed attempts: give up for the day
+    for hour in (11, 12, 13):
+        _log_run(log_file, f"2026-11-25T{hour}:05:00+00:00", success=False)
+    should_run, reason = runner.catch_up_decision(at(2026, 11, 25, 20))
+    assert should_run is False and "Gave up" in reason
+
+
+def test_catch_up_runs_pipeline_once(tmp_path: Path, offline_network: Any) -> None:
+    from zoneinfo import ZoneInfo
+
+    now = datetime.datetime(2026, 11, 23, 16, 30, tzinfo=ZoneInfo("Asia/Karachi"))
+    runner = DailyPipelineRunner(data_dir=tmp_path / "data", retry_delay=0.01)
+    runner._target_symbols = ["OGDC"]
+
+    report = runner.run_catch_up(now=now)
+    assert report is not None and report.success
+
+    log_lines = runner.log_file.read_text(encoding="utf-8").splitlines()
+    assert len(log_lines) == 1
+    assert '"dry_run": false' in log_lines[0]
+
+    # Not due on a Saturday: nothing runs and nothing is logged
+    assert runner.run_catch_up(now=now + datetime.timedelta(days=5)) is None
+    assert len(runner.log_file.read_text(encoding="utf-8").splitlines()) == 1
+
+
+def test_sync_data_store_clones_then_pulls(tmp_path: Path) -> None:
+    """`psx data sync` clones the data branch once, then fast-forwards it."""
+    import subprocess
+
+    from psx_predictor.storage.sync import sync_data_store
+
+    def git(*args: str, cwd: Path) -> None:
+        subprocess.run(["git", *args], cwd=cwd, check=True, capture_output=True)
+
+    # A "GitHub" repo with a data-store branch, and a code checkout whose origin is it
+    remote = tmp_path / "remote"
+    remote.mkdir()
+    git("init", "-q", "-b", "data-store", cwd=remote)
+    (remote / "pipeline.log").write_text("run 1\n", encoding="utf-8")
+    git("add", ".", cwd=remote)
+    git("-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "d1", cwd=remote)
+    code = tmp_path / "code"
+    code.mkdir()
+    git("init", "-q", cwd=code)
+    git("remote", "add", "origin", str(remote), cwd=code)
+    data_dir = code / "data"
+
+    first = sync_data_store(data_dir, repo_dir=code)
+    assert first.ok, first.message
+    assert (data_dir / "pipeline.log").read_text(encoding="utf-8") == "run 1\n"
+
+    (remote / "pipeline.log").write_text("run 1\nrun 2\n", encoding="utf-8")
+    git("-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qam", "d2", cwd=remote)
+    second = sync_data_store(data_dir, repo_dir=code)
+    assert second.ok, second.message
+    assert "run 2" in (data_dir / "pipeline.log").read_text(encoding="utf-8")
+
+
+def test_sync_leaves_local_data_alone(tmp_path: Path) -> None:
+    from psx_predictor.storage.sync import sync_data_store
+
+    data_dir = tmp_path / "data"
+    data_dir.mkdir()
+    (data_dir / "local.parquet").write_bytes(b"x")
+    result = sync_data_store(data_dir, repo_dir=tmp_path)
+    assert not result.ok and "already holds data" in result.message
+    assert (data_dir / "local.parquet").exists()
