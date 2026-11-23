@@ -1,4 +1,4 @@
-# Sets up the PSX daily run on this Windows laptop (alternative to the GitHub cloud run).
+# Sets up the PSX daily run on this Windows laptop. Everything runs locally; data stays in data\.
 #
 # Creates a Task Scheduler task that checks every hour and at log-on. Each check runs
 # `psx schedule run-daily --catch-up`, which only does work once per PSX trading day after
@@ -23,10 +23,12 @@ $LogFile = Join-Path $RepoDir "data\scheduler.out.log"
 New-Item -ItemType Directory -Force -Path (Join-Path $RepoDir "data") | Out-Null
 
 $Command = "cd /d `"$RepoDir`" && `"$Uv`" run psx schedule run-daily --catch-up >> `"$LogFile`" 2>&1"
-$Action = New-ScheduledTaskAction -Execute "cmd.exe" -Argument "/c $Command" -WorkingDirectory $RepoDir
+# conhost --headless keeps a console window from flashing up every hour (Windows 11).
+$Action = New-ScheduledTaskAction -Execute "conhost.exe" `
+    -Argument "--headless cmd.exe /c $Command" -WorkingDirectory $RepoDir
 
-$Hourly = New-ScheduledTaskTrigger -Once -At (Get-Date).Date `
-    -RepetitionInterval (New-TimeSpan -Hours 1) -RepetitionDuration (New-TimeSpan -Days 3650)
+# No -RepetitionDuration: the hourly repetition then continues indefinitely.
+$Hourly = New-ScheduledTaskTrigger -Once -At (Get-Date).Date -RepetitionInterval (New-TimeSpan -Hours 1)
 $AtLogOn = New-ScheduledTaskTrigger -AtLogOn -User $env:USERNAME
 
 $Settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -AllowStartIfOnBatteries `

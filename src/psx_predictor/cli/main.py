@@ -194,19 +194,6 @@ def storage_status(
         console.print(f"[bold red]DuckDB Engine Error:[/bold red] {e}")
 
 
-@data_app.command("sync")
-def data_sync() -> None:
-    """Download the latest data saved by the cloud daily run (GitHub 'data-store' branch)."""
-    from psx_predictor.config.loader import load_config
-    from psx_predictor.storage.sync import sync_data_store
-
-    result = sync_data_store(Path(load_config().settings.data_dir))
-    style = "green" if result.ok else "yellow"
-    console.print(f"[{style}]{result.message}[/{style}]")
-    if not result.ok:
-        raise typer.Exit(code=1)
-
-
 @data_app.command("inspect")
 def data_inspect(
     file_path: Annotated[
@@ -1959,13 +1946,6 @@ def dashboard_start(
             help="Verify dashboard files and configuration without starting server",
         ),
     ] = False,
-    sync: Annotated[
-        bool,
-        typer.Option(
-            "--sync/--no-sync",
-            help="Download the latest data saved by the cloud daily run before starting",
-        ),
-    ] = True,
 ) -> None:
     """Launch the interactive Streamlit research dashboard."""
     import subprocess
@@ -1990,14 +1970,6 @@ def dashboard_start(
             f"[cyan]{dashboard_file}[/cyan]. Ready to serve!"
         )
         return
-
-    if sync:
-        from psx_predictor.config.loader import load_config
-        from psx_predictor.storage.sync import sync_data_store
-
-        result = sync_data_store(Path(load_config().settings.data_dir))
-        style = "green" if result.ok else "yellow"
-        console.print(f"[{style}]{result.message}[/{style}]")
 
     cmd = [
         sys.executable,
