@@ -5,6 +5,7 @@ import json
 import re
 import time
 from typing import Any, Optional
+from zoneinfo import ZoneInfo
 
 import httpx
 import pandas as pd
@@ -18,6 +19,8 @@ from psx_predictor.collectors.base import (
     RateLimitError,
     SymbolNotFoundError,
 )
+
+PKT_TZ = ZoneInfo("Asia/Karachi")
 
 
 class SCSTradeCollector(BaseCollector):
@@ -62,8 +65,9 @@ class SCSTradeCollector(BaseCollector):
                 raise ValueError(f"Unable to parse date string: {ms_date_str}") from e
 
         timestamp_ms = int(match.group(1))
-        # Convert UTC timestamp in milliseconds to date
-        dt = datetime.datetime.fromtimestamp(timestamp_ms / 1000.0, datetime.timezone.utc)
+        # SCS stamps each session at local midnight (PKT, UTC+5), e.g. 23 Nov 00:00 PKT is
+        # 22 Nov 19:00 UTC. Taking the date in UTC would shift every session a day early.
+        dt = datetime.datetime.fromtimestamp(timestamp_ms / 1000.0, PKT_TZ)
         return dt.date()
 
     def fetch_raw(

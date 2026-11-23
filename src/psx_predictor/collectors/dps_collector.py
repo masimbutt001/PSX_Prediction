@@ -3,6 +3,7 @@
 import datetime
 import time
 from typing import Any, Optional
+from zoneinfo import ZoneInfo
 
 import httpx
 import pandas as pd
@@ -16,6 +17,9 @@ from psx_predictor.collectors.base import (
     RateLimitError,
     SymbolNotFoundError,
 )
+
+# Session timestamps are read in PKT: a PKT-midnight stamp is the previous day in UTC.
+PKT_TZ = ZoneInfo("Asia/Karachi")
 
 
 class DPSCollector(BaseCollector):
@@ -152,7 +156,7 @@ class DPSCollector(BaseCollector):
                 if isinstance(row, (list, tuple)) and len(row) >= 5:
                     raw_ts = float(row[0])
                     sec_ts = raw_ts / 1000.0 if raw_ts > 1e11 else raw_ts
-                    date_val = datetime.datetime.fromtimestamp(sec_ts, datetime.timezone.utc).date()
+                    date_val = datetime.datetime.fromtimestamp(sec_ts, PKT_TZ).date()
 
                     open_val = float(row[1])
                     high_val = float(row[2])
@@ -164,7 +168,7 @@ class DPSCollector(BaseCollector):
                 elif isinstance(row, dict):
                     raw_ts = float(row.get("time") or row.get("date") or 0)
                     sec_ts = raw_ts / 1000.0 if raw_ts > 1e11 else raw_ts
-                    date_val = datetime.datetime.fromtimestamp(sec_ts, datetime.timezone.utc).date()
+                    date_val = datetime.datetime.fromtimestamp(sec_ts, PKT_TZ).date()
                     open_val = float(row["open"])
                     high_val = float(row["high"])
                     low_val = float(row["low"])
