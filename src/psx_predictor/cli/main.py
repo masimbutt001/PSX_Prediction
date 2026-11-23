@@ -2013,6 +2013,16 @@ def schedule_run_daily(
             help="Proceed with subsequent pipeline steps if an earlier step fails",
         ),
     ] = False,
+    skip_non_trading_days: Annotated[
+        bool,
+        typer.Option(
+            "--skip-non-trading-days",
+            help=(
+                "Exit without running on weekends and PSX holidays "
+                "(use this when calling from Windows Task Scheduler or cron)"
+            ),
+        ),
+    ] = False,
 ) -> None:
     """Execute the sequential 6-step End-of-Day (EOD) operational pipeline immediately."""
     from psx_predictor.scheduler.runner import DailyPipelineRunner
@@ -2027,8 +2037,9 @@ def schedule_run_daily(
         dry_run=dry_run,
         continue_on_error=continue_on_error,
         symbols=parsed_symbols,
+        skip_non_trading_days=skip_non_trading_days,
     )
-    if not report.success:
+    if report is not None and not report.success:
         raise typer.Exit(code=1)
 
 

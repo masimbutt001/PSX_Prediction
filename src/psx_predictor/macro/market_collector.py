@@ -13,7 +13,14 @@ from psx_predictor.macro.schemas import MacroDataPoint, MacroIndicatorType
 class MarketMacroCollector:
     """Collects daily traded macro series: USD/PKR, Brent Crude Oil, and KSE-100 Index."""
 
-    def __init__(self, fallback_on_error: bool = True) -> None:
+    def __init__(self, fallback_on_error: bool = False) -> None:
+        """Create the collector.
+
+        Args:
+            fallback_on_error: If True, generate deterministic synthetic series when Yahoo
+                Finance returns nothing. Only meant for offline demos and tests: synthetic
+                values are not real market data and must never feed live features.
+        """
         self.fallback_on_error = fallback_on_error
 
     def fetch_usd_pkr(

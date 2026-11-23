@@ -5,6 +5,7 @@ import json
 import time
 from pathlib import Path
 from typing import Any, Callable, Optional
+from zoneinfo import ZoneInfo
 
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.schedulers.blocking import BlockingScheduler
@@ -14,6 +15,7 @@ from rich.console import Console
 from rich.table import Table
 
 from psx_predictor.config.loader import load_config
+from psx_predictor.news.calendar import PSXMarketCalendar
 from psx_predictor.scheduler.jobs import (
     DailyPipelineStep,
     PipelineRunReport,
@@ -118,16 +120,30 @@ class DailyPipelineRunner:
         if dry_run:
             return f"[DRY-RUN] Simulated price update for {len(symbols)} enabled stocks"
 
-        from psx_predictor.data.collector import MarketDataCollector
         from psx_predictor.processing.updater import IncrementalUpdater
 
-        collector = MarketDataCollector()
-        updater = IncrementalUpdater(storage_paths=self.paths, collector=collector)
+        # Default collector is CompositeCollector (SCSTrade -> Yahoo -> PSX DPS failover)
+        updater = IncrementalUpdater(storage_paths=self.paths)
         res = self._execute_with_retry(
             lambda: updater.update_universe(symbols=symbols),
             step_name="update_prices",
         )
-        return f"Updated {res.successful_updates}/{res.total_symbols} stock price series"
+        succeeded = res.updated_symbols + res.up_to_date_symbols + res.bootstrapped_symbols
+        if res.failed_symbols and succeeded == 0:
+            raise RuntimeError(
+                f"Price update failed for all {res.total_symbols} symbols; "
+                "no new market data was collected."
+            )
+        msg = (
+            f"Updated {succeeded}/{res.total_symbols} stock price series "
+            f"(+{res.total_records_added} rows)"
+        )
+        if res.failed_symbols:
+            failed = sorted(
+                s for s, r in res.symbol_results.items() if getattr(r, "status", "") == "FAILED"
+            )
+            msg += f"; {res.failed_symbols} failed: {', '.join(failed) or 'see log'}"
+        return msg
 
     def _step_collect_news(self, dry_run: bool) -> str:
         """Step 2: Collect latest financial news & corporate announcements and score sentiment."""
@@ -153,7 +169,7 @@ class DailyPipelineRunner:
         proc_res = processor.process_all(dry_run=False)
 
         return (
-            f"Ingested {rss_res.new_articles_added} RSS, {dps_res.new_announcements} DPS, "
+            f"Ingested {rss_res.new_articles_added} RSS, {dps_res.new_announcements_added} DPS, "
             f"created {proc_res.new_signals_created} signals"
         )
 
@@ -162,14 +178,26 @@ class DailyPipelineRunner:
         if dry_run:
             return "[DRY-RUN] Simulated macroeconomic indicator synchronization"
 
-        from psx_predictor.macro.ingestor import MacroRetrospectiveIngestor
+        from psx_predictor.macro.storage import MacroStorage
 
-        ingestor = MacroRetrospectiveIngestor(paths=self.paths)
-        res = self._execute_with_retry(
-            lambda: ingestor.ingest_all(dry_run=False),
+        storage = MacroStorage(storage_paths=self.paths)
+        summary = self._execute_with_retry(
+            lambda: storage.update(dry_run=False),
             step_name="update_macro",
         )
-        return f"Synchronized macroeconomic indicators: {len(res.indicators)} series updated"
+        msg = (
+            f"Synchronized macroeconomic indicators: {len(summary.indicators_updated)} series, "
+            f"latest session {summary.latest_session or 'N/A'}"
+        )
+        if summary.missing_indicators:
+            # Data that did arrive is already saved; earlier saved values are kept for the rest.
+            raise RuntimeError(
+                "No fresh data for "
+                + ", ".join(summary.missing_indicators)
+                + "; kept previously saved values. "
+                + msg
+            )
+        return msg
 
     def _step_build_features(self, dry_run: bool) -> str:
         """Step 4: Rebuild technical and multi-modal combined feature vectors."""
@@ -227,8 +255,31 @@ class DailyPipelineRunner:
         dry_run: bool = False,
         continue_on_error: bool = False,
         symbols: Optional[list[str]] = None,
-    ) -> PipelineRunReport:
-        """Execute end-to-end daily operational routine in strict topological sequence."""
+        skip_non_trading_days: bool = False,
+        run_date: Optional[datetime.date] = None,
+    ) -> Optional[PipelineRunReport]:
+        """Execute end-to-end daily operational routine in strict topological sequence.
+
+        Args:
+            dry_run: Simulate every step without network access or disk writes.
+            continue_on_error: Keep running later steps after a step fails.
+            symbols: Optional subset of tickers (defaults to all enabled stocks).
+            skip_non_trading_days: Do nothing on weekends and PSX holidays. Used by the
+                scheduler daemon and by external schedulers such as Windows Task Scheduler.
+            run_date: Date to check against the PSX calendar (defaults to today in the
+                configured timezone).
+
+        Returns:
+            The run report, or None when the run was skipped because PSX is closed.
+        """
+        if skip_non_trading_days:
+            today = run_date or self._local_today()
+            if not PSXMarketCalendar().is_trading_day(today):
+                msg = f"Skipping daily pipeline: PSX is closed on {today.isoformat()}."
+                logger.info(msg)
+                self.console.print(f"[yellow]{msg}[/yellow]")
+                return None
+
         if symbols is not None:
             self._target_symbols = symbols
         start_time = datetime.datetime.now(datetime.timezone.utc)
@@ -288,6 +339,15 @@ class DailyPipelineRunner:
 
         return report
 
+    def _local_today(self) -> datetime.date:
+        """Today's date in the configured market timezone (Asia/Karachi by default)."""
+        tz = ZoneInfo(self.config.settings.timezone)
+        return datetime.datetime.now(tz).date()
+
+    def _scheduled_run(self) -> Optional[PipelineRunReport]:
+        """Entry point for cron triggers: skip holidays, keep going past failed steps."""
+        return self.run_daily_pipeline(continue_on_error=True, skip_non_trading_days=True)
+
     def _append_log(self, report: PipelineRunReport) -> None:
         """Write execution audit record to data/pipeline.log."""
         try:
@@ -341,14 +401,14 @@ class DailyPipelineRunner:
         scheduler: Any = BlockingScheduler() if blocking else BackgroundScheduler()
 
         scheduler.add_job(
-            self.run_daily_pipeline,
+            self._scheduled_run,
             trigger=triggers[0],
             id="psx_eod_mon_thu",
             name="PSX EOD Pipeline (Mon-Thu 16:00 PKT)",
             replace_existing=True,
         )
         scheduler.add_job(
-            self.run_daily_pipeline,
+            self._scheduled_run,
             trigger=triggers[1],
             id="psx_eod_fri",
             name="PSX EOD Pipeline (Fri 17:00 PKT)",

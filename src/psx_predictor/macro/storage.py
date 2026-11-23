@@ -16,6 +16,13 @@ from psx_predictor.news.calendar import PSXMarketCalendar
 from psx_predictor.storage.parquet_io import read_parquet, write_parquet_atomic
 from psx_predictor.storage.paths import ensure_directories, get_storage_paths
 
+# Daily market series fetched live; if any is missing the update is reported as incomplete.
+MARKET_INDICATORS = (
+    MacroIndicatorType.USD_PKR,
+    MacroIndicatorType.BRENT_CRUDE,
+    MacroIndicatorType.KSE_100,
+)
+
 
 @dataclass
 class MacroUpdateSummary:
@@ -28,6 +35,7 @@ class MacroUpdateSummary:
     latest_session: Optional[str] = None
     daily_feature_records: int = 0
     latest_indicators: dict[str, float] = field(default_factory=dict)
+    missing_indicators: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -138,33 +146,32 @@ class MacroStorage:
             # Forward-fill, and fill any initial dates prior to the earliest history
             features_df[ind] = merged[ind].ffill().bfill()
 
-        # Standard column renames / fallbacks
-        features_df["usd_pkr"] = features_df.get(
-            MacroIndicatorType.USD_PKR.value, pd.Series(278.50, index=features_df.index)
-        ).astype(float)
-        features_df["sbp_policy_rate"] = features_df.get(
-            MacroIndicatorType.SBP_POLICY_RATE.value, pd.Series(10.0, index=features_df.index)
-        ).astype(float)
-        features_df["kibor_6m"] = features_df.get(
-            MacroIndicatorType.KIBOR_6M.value, pd.Series(10.65, index=features_df.index)
-        ).astype(float)
-        features_df["cpi_yoy"] = features_df.get(
-            MacroIndicatorType.CPI_YOY.value, pd.Series(5.0, index=features_df.index)
-        ).astype(float)
-        features_df["brent_crude"] = features_df.get(
-            MacroIndicatorType.BRENT_CRUDE.value, pd.Series(80.0, index=features_df.index)
-        ).astype(float)
-        features_df["kse100_index"] = features_df.get(
-            MacroIndicatorType.KSE_100.value, pd.Series(80000.0, index=features_df.index)
-        ).astype(float)
+        # Standard column renames. A series that was never collected stays empty (NaN)
+        # rather than being filled with an invented constant.
+        column_map = {
+            "usd_pkr": MacroIndicatorType.USD_PKR.value,
+            "sbp_policy_rate": MacroIndicatorType.SBP_POLICY_RATE.value,
+            "kibor_6m": MacroIndicatorType.KIBOR_6M.value,
+            "cpi_yoy": MacroIndicatorType.CPI_YOY.value,
+            "brent_crude": MacroIndicatorType.BRENT_CRUDE.value,
+            "kse100_index": MacroIndicatorType.KSE_100.value,
+        }
+        for out_col, indicator in column_map.items():
+            if indicator in features_df.columns:
+                features_df[out_col] = features_df[indicator].astype(float)
+            else:
+                logger.warning(f"No saved observations for {indicator}; '{out_col}' left empty.")
+                features_df[out_col] = float("nan")
 
         # Compute daily percentage returns for continuous market series
-        features_df["usd_pkr_return_1d"] = features_df["usd_pkr"].pct_change().fillna(0.0).round(5)
+        features_df["usd_pkr_return_1d"] = (
+            features_df["usd_pkr"].pct_change(fill_method=None).fillna(0.0).round(5)
+        )
         features_df["brent_return_1d"] = (
-            features_df["brent_crude"].pct_change().fillna(0.0).round(5)
+            features_df["brent_crude"].pct_change(fill_method=None).fillna(0.0).round(5)
         )
         features_df["kse100_return_1d"] = (
-            features_df["kse100_index"].pct_change().fillna(0.0).round(5)
+            features_df["kse100_index"].pct_change(fill_method=None).fillna(0.0).round(5)
         )
 
         # Clean output columns
@@ -194,6 +201,15 @@ class MacroStorage:
         # 1. Collect raw observations
         points = self.collect_all_raw(start_date=start_date, end_date=end_date)
         summary.total_raw_points_collected = len(points)
+        fresh = {p.indicator for p in points}
+        summary.missing_indicators = [
+            ind.value for ind in MARKET_INDICATORS if ind.value not in fresh
+        ]
+        if summary.missing_indicators:
+            logger.warning(
+                "No fresh observations for "
+                f"{', '.join(summary.missing_indicators)}; previously saved values are kept."
+            )
         if not points:
             logger.warning("No macroeconomic data points collected.")
             return summary

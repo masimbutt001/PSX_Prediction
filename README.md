@@ -223,6 +223,12 @@ uv run psx macro update
 uv run psx macro show
 ```
 
+SBP policy rates and PBS CPI releases are read from `config/macro_rates.yaml`. Add a line there
+whenever SBP announces a decision or PBS publishes CPI. 6-month KIBOR is currently estimated as
+the policy rate plus the spread set in that file. USD/PKR, Brent and KSE-100 come from Yahoo
+Finance; if Yahoo fails, the previously saved values are kept and the macro step is reported as
+failed (no synthetic data is generated).
+
 ### 8. FastAPI REST Backend (`psx api`)
 ```bash
 # Start the production REST API server (default: http://127.0.0.1:8000)
@@ -260,6 +266,9 @@ uv run psx schedule run-daily
 
 # Run the live pipeline for specific symbols, continuing if non-critical steps fail
 uv run psx schedule run-daily --symbols OGDC,HBL --continue-on-error
+
+# Command for Windows Task Scheduler / cron: does nothing on weekends and PSX holidays
+uv run psx schedule run-daily --continue-on-error --skip-non-trading-days
 
 # Launch the long-running APScheduler process in foreground blocking mode
 uv run psx schedule start
