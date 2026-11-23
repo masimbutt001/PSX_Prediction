@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Sets up the PSX daily run on this Mac (alternative to the GitHub cloud run).
+# Sets up the PSX daily run on this Mac. Everything runs locally; data stays in data/.
 #
 # Installs a launchd agent that checks every hour and at log-in. Each check runs
 # `psx schedule run-daily --catch-up`, which only does work once per PSX trading day after

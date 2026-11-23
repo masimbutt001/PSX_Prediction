@@ -374,25 +374,22 @@ curl -X POST "http://127.0.0.1:8000/api/v1/backtest/run" \
 
 ## Automated Daily Operational Routine
 
-### Hands-off setup (recommended): GitHub Actions
-`.github/workflows/daily-pipeline.yml` runs the pipeline in the cloud every weekday after PSX
-closes, so nothing depends on your laptop being on. All data is saved to the repository's
-`data-store` branch, which also serves as a backup. Nothing to install: once the workflow is on
-`main`, it runs by itself. To run it now: GitHub -> Actions -> "Daily PSX pipeline" -> "Run workflow".
+Everything runs on your own computer. Git holds source code only: all data stays in the local
+`data/` folder, which is not committed.
 
-On your laptop, `uv run psx dashboard` downloads the latest saved data before it starts
-(or run `uv run psx data sync` yourself).
-
-### Alternative: run on your own laptop
-Use this instead of the cloud run, not as well as it. One-time setup:
-```bash
-# Windows (PowerShell, from the repository folder)
+### One-time setup on Windows 11 (Task Scheduler)
+From the repository folder in PowerShell:
+```powershell
 powershell -ExecutionPolicy Bypass -File scripts\install_laptop_schedule_windows.ps1
-# macOS
-bash scripts/install_laptop_schedule_macos.sh
 ```
-Both check every hour and run `psx schedule run-daily --catch-up`, which does the work once per
-PSX trading day after market close, so a run missed while the laptop was off happens later.
+This registers a "PSX Daily Pipeline" task that checks every hour and at log-on. Each check runs
+`psx schedule run-daily --catch-up`, which does the work once per PSX trading day after market
+close (16:00 PKT Mon-Thu, 17:00 PKT Fri), skips holidays, and retries a failed day up to three
+times. If the laptop was off or asleep at 16:00, the run happens at the next check.
+Output is written to `data\scheduler.out.log`; each run is also recorded in `data\pipeline.log`.
+To remove the task, run the same script with `-Uninstall`.
+
+On macOS the equivalent is `bash scripts/install_laptop_schedule_macos.sh` (launchd).
 
 ### How a run works
 
