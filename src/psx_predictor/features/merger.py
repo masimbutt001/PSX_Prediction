@@ -10,6 +10,8 @@ from loguru import logger
 from psx_predictor.config.loader import load_config
 from psx_predictor.features.builder import TechnicalFeatureBuilder
 from psx_predictor.macro.storage import MacroStorage
+from psx_predictor.research.features import RESEARCH_FEATURE_COLUMNS, build_research_features
+from psx_predictor.research.store import ResearchStore
 from psx_predictor.storage.parquet_io import (
     DatasetNotFoundError,
     read_parquet,
@@ -60,6 +62,7 @@ class MergeResult:
     news_features_count: int = 0
     macro_features_count: int = 0
     interaction_features_count: int = 0
+    research_features_count: int = 0
     start_date: Optional[str] = None
     end_date: Optional[str] = None
     file_path: Optional[str] = None
@@ -83,6 +86,7 @@ class MultiModalFeatureMerger:
         ensure_directories(self.storage_paths["root"])
         self.tech_builder = TechnicalFeatureBuilder(self.storage_paths)
         self.macro_storage = MacroStorage(storage_paths=self.storage_paths)
+        self.research_store = ResearchStore(storage_paths=self.storage_paths)
 
     def merge_symbol(self, symbol: str, save: bool = True) -> pd.DataFrame:
         """Merge all data modalities for a single ticker with zero look-ahead bias.
@@ -154,7 +158,17 @@ class MultiModalFeatureMerger:
         # 4. Compute cross-modal interaction & relative features
         merged = self._compute_interaction_features(merged)
 
-        # 5. Persist merged dataset atomically
+        # 5. Point-in-time research features (neutral when no research files exist)
+        research_reports = self.research_store.load_reports(clean_sym)
+        research_df = build_research_features(merged["session_date"], research_reports)
+        for col in RESEARCH_FEATURE_COLUMNS:
+            merged[col] = research_df[col].to_numpy()
+        if research_reports:
+            logger.info(
+                f"[{clean_sym}] Merged research features from {len(research_reports)} file(s)."
+            )
+
+        # 6. Persist merged dataset atomically
         if save:
             dest_dir = self.storage_paths["features_combined"]
             dest_dir.mkdir(parents=True, exist_ok=True)
@@ -295,7 +309,12 @@ class MultiModalFeatureMerger:
                 inter_count = sum(
                     1 for c in INTERACTION_FEATURE_COLUMNS if c in merged_df.columns
                 )
-                tech_count = len(merged_df.columns) - (news_count + macro_count + inter_count)
+                research_count = sum(
+                    1 for c in RESEARCH_FEATURE_COLUMNS if c in merged_df.columns
+                )
+                tech_count = len(merged_df.columns) - (
+                    news_count + macro_count + inter_count + research_count
+                )
 
                 start_d = str(merged_df["session_date"].iloc[0]) if not merged_df.empty else None
                 end_d = str(merged_df["session_date"].iloc[-1]) if not merged_df.empty else None
@@ -314,6 +333,7 @@ class MultiModalFeatureMerger:
                     news_features_count=news_count,
                     macro_features_count=macro_count,
                     interaction_features_count=inter_count,
+                    research_features_count=research_count,
                     start_date=start_d,
                     end_date=end_d,
                     file_path=dest_file,

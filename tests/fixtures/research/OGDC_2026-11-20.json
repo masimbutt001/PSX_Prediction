@@ -1,0 +1,159 @@
+{
+  "schema_version": "1.0",
+  "symbol": "OGDC",
+  "company_name": "Oil & Gas Development Company Limited",
+  "sector": "Oil & Gas Exploration",
+  "research_date": "2026-11-20",
+  "data_as_of": "2026-11-19",
+  "generated_by": "google-antigravity",
+  "model_name": null,
+  "price_context": {
+    "last_close_pkr": 250.0,
+    "last_close_date": "2026-11-19",
+    "high_52w_pkr": 290.0,
+    "low_52w_pkr": 180.0,
+    "market_cap_pkr_bn": 1075.0,
+    "shares_outstanding_mn": 4300.9,
+    "free_float_pct": 15.0,
+    "avg_daily_volume_shares": 5000000
+  },
+  "scores": {
+    "overall_sentiment": 0.4,
+    "news_sentiment": 0.2,
+    "outlook_short_term": 0.3,
+    "outlook_medium_term": 0.5,
+    "fundamental_score": 70,
+    "valuation_score": 75,
+    "growth_score": 55,
+    "dividend_score": 65,
+    "financial_health_score": 60,
+    "management_governance_score": 50,
+    "risk_score": 55,
+    "confidence": 0.8
+  },
+  "recommendation": {
+    "stance": "BUY",
+    "horizon": "MEDIUM",
+    "fair_value_pkr": 300.0,
+    "fair_value_method": "P/E multiple",
+    "upside_pct": 20.0,
+    "rationale": "Test fixture only; numbers are illustrative."
+  },
+  "fundamentals": {
+    "fiscal_year_end_month": 6,
+    "latest_period": "1QFY27",
+    "latest_period_end": "2026-09-30",
+    "revenue_pkr_bn": 100.0,
+    "revenue_growth_yoy_pct": 5.0,
+    "net_income_pkr_bn": 40.0,
+    "net_income_growth_yoy_pct": 3.0,
+    "eps_pkr": 9.3,
+    "eps_ttm_pkr": 38.0,
+    "eps_growth_yoy_pct": 3.0,
+    "gross_margin_pct": 60.0,
+    "net_margin_pct": 40.0,
+    "roe_pct": 15.0,
+    "pe_ratio": 6.6,
+    "pb_ratio": 0.9,
+    "ev_ebitda": null,
+    "book_value_per_share_pkr": 280.0,
+    "debt_to_equity": 0.0,
+    "current_ratio": 4.0,
+    "source_ids": ["S1"]
+  },
+  "earnings": [
+    {
+      "period": "1QFY27",
+      "period_end": "2026-09-30",
+      "announcement_date": "2026-10-28",
+      "revenue_pkr_bn": 100.0,
+      "net_income_pkr_bn": 40.0,
+      "eps_pkr": 9.3,
+      "eps_yoy_pct": 3.0,
+      "vs_expectation": "INLINE",
+      "source_ids": ["S1"]
+    }
+  ],
+  "dividends": {
+    "trailing_12m_dps_pkr": 15.0,
+    "dividend_yield_pct": 6.0,
+    "payout_ratio_pct": 40.0,
+    "history": [
+      {
+        "period": "1QFY27",
+        "type": "INTERIM",
+        "amount_pkr": 3.0,
+        "bonus_or_right_pct": null,
+        "announcement_date": "2026-10-28",
+        "book_closure_start": "2026-11-10",
+        "source_ids": ["S1"]
+      }
+    ]
+  },
+  "upcoming_events": [
+    {
+      "date": "2026-11-24",
+      "date_is_estimate": false,
+      "event_type": "POLICY_RATE",
+      "description": "SBP monetary policy decision",
+      "expected_impact": "UNCERTAIN",
+      "source_ids": ["S2"]
+    }
+  ],
+  "catalysts": [
+    {
+      "title": "Circular debt settlement",
+      "description": "Government plan to clear receivables.",
+      "direction": "POSITIVE",
+      "impact": "HIGH",
+      "probability": 0.4,
+      "timeframe": "MEDIUM",
+      "source_ids": ["S2"]
+    }
+  ],
+  "risks": [
+    {
+      "title": "Oil price decline",
+      "category": "COMMODITY",
+      "severity": "MEDIUM",
+      "likelihood": "MEDIUM",
+      "description": "Lower Brent reduces realised prices.",
+      "source_ids": ["S2"]
+    }
+  ],
+  "news": [
+    {
+      "date": "2026-11-18",
+      "headline": "OGDC announces new discovery",
+      "summary": "Test fixture news item.",
+      "category": "PROJECT",
+      "sentiment": 0.6,
+      "importance": "MEDIUM",
+      "source_ids": ["S2"]
+    }
+  ],
+  "sector_view": {
+    "name": "Oil & Gas Exploration",
+    "outlook": 0.2,
+    "key_drivers": ["Brent crude", "Circular debt"],
+    "peers": [{"symbol": "PPL", "pe_ratio": 5.0, "pb_ratio": 0.7, "dividend_yield_pct": 5.0, "note": null}],
+    "source_ids": ["S2"]
+  },
+  "management": {
+    "ceo": null,
+    "chairman": null,
+    "major_shareholders": [{"name": "Government of Pakistan", "stake_pct": 74.97}],
+    "recent_changes": [],
+    "governance_notes": null,
+    "source_ids": []
+  },
+  "analyst_views": [],
+  "market_sentiment": {"forum_sentiment": null, "institutional_flows_note": null, "notes": null},
+  "key_takeaways": ["Illustrative test fixture."],
+  "data_gaps": ["CEO name not verified."],
+  "notes": null,
+  "sources": [
+    {"id": "S1", "title": "Financial results", "publisher": "PSX", "url": "https://dps.psx.com.pk/", "published_date": "2026-10-28", "accessed_date": "2026-11-20", "type": "PSX_FILING"},
+    {"id": "S2", "title": "News article", "publisher": "Business Recorder", "url": "https://www.brecorder.com/", "published_date": "2026-11-18", "accessed_date": "2026-11-20", "type": "NEWS"}
+  ]
+}
