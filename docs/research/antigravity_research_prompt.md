@@ -4,6 +4,10 @@ Copy everything between the two `====` lines into Antigravity, with the
 `D:\Development\PSX_Prediction` folder open as the workspace. Change the
 `SYMBOLS` line first. Everything else can stay as it is.
 
+After it finishes, run `uv run psx research validate` to check the files, then open the
+Research page in the dashboard (`uv run psx dashboard`). The app reads schema version 1.0
+(`src/psx_predictor/research/schemas.py`); if you change the schema here, change it there too.
+
 ====================================================================
 
 ## Task

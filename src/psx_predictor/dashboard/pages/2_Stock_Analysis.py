@@ -103,6 +103,28 @@ else:
             top_drivers=drivers,
             model_name=str(latest.get("model_name", "Multi-Modal Stacking Ensemble")),
         )
+
+        raw_research = latest.get("research_json", "{}")
+        research_snap: dict = {}
+        if isinstance(raw_research, str):
+            try:
+                research_snap = json.loads(raw_research)
+            except Exception:
+                research_snap = {}
+        if research_snap:
+            agree = research_snap.get("agrees_with_model")
+            agree_txt = (
+                " Research agrees with the model."
+                if agree is True
+                else (" Research disagrees with the model." if agree is False else "")
+            )
+            st.caption(
+                f"Research from {research_snap.get('research_date')} "
+                f"(weight {research_snap.get('weight')}): stance "
+                f"{research_snap.get('stance')}, short-term outlook "
+                f"{research_snap.get('outlook_short_term')}, risk "
+                f"{research_snap.get('risk_score')}.{agree_txt} See the Research page."
+            )
     else:
         st.info(f"No prediction record logged yet in the audit registry for {selected_symbol}.")
         if st.button("Generate On-Demand Prediction", type="primary"):

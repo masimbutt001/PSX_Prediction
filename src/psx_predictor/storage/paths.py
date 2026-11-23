@@ -18,6 +18,7 @@ STANDARD_DATA_DIRS = [
     "predictions",
     "models",
     "reports",
+    "research",
 ]
 
 

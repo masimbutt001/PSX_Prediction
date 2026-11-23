@@ -30,6 +30,7 @@ class PredictionRecord(BaseModel):
     confidence: float = Field(default=0.5, ge=0.0, le=1.0)
     feature_version: str = "1.0.0"
     drivers_json: str = "{}"
+    research_json: str = "{}"  # research snapshot that applied when the forecast was made
     realized_outcome: Optional[float] = None
     is_correct: Optional[bool] = None
 

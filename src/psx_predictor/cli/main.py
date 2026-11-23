@@ -2,7 +2,7 @@
 
 import json
 from pathlib import Path
-from typing import Annotated, Optional
+from typing import TYPE_CHECKING, Annotated, Optional
 
 import pandas as pd
 import typer
@@ -17,6 +17,9 @@ from psx_predictor.storage.duckdb_client import DuckDBClient
 from psx_predictor.storage.parquet_io import read_parquet
 from psx_predictor.storage.paths import ensure_directories, get_storage_paths
 from psx_predictor.storage.schemas import PriceDatasetValidator
+
+if TYPE_CHECKING:
+    from psx_predictor.research.store import ResearchStore
 
 app = typer.Typer(
     name="psx",
@@ -40,6 +43,7 @@ schedule_app = typer.Typer(help="Manage automated daily pipeline schedules")
 health_app = typer.Typer(
     help="System health, probability calibration, and feature drift diagnostics"
 )
+research_app = typer.Typer(help="List, validate, and inspect stock research files")
 
 app.add_typer(config_app, name="config")
 app.add_typer(storage_app, name="storage")
@@ -52,6 +56,7 @@ app.add_typer(macro_app, name="macro")
 app.add_typer(api_app, name="api")
 app.add_typer(schedule_app, name="schedule")
 app.add_typer(health_app, name="health")
+app.add_typer(research_app, name="research")
 
 console = Console()
 
@@ -1199,6 +1204,8 @@ def _generate_prediction_cli(
     table.add_row("Directional Signal", f"[bold {sig_color}]{record.signal}[/bold {sig_color}]")
     table.add_row("Signal Confidence", f"{record.confidence:.1%}")
     table.add_row("Top Feature Drivers", record.drivers_json)
+    if record.research_json and record.research_json != "{}":
+        table.add_row("Research Snapshot", record.research_json)
     status_str = (
         "[bold green]REGISTERED (predictions.parquet)[/bold green]"
         if save
@@ -2330,6 +2337,117 @@ def health_drift(
         console.print(
             f"\n[bold green]Feature distributions for {sym} are stable.[/bold green]"
         )
+
+
+def _research_store() -> "ResearchStore":
+    from psx_predictor.research.store import ResearchStore
+
+    cfg = load_config()
+    return ResearchStore(storage_paths=ensure_directories(cfg.settings.data_dir))
+
+
+def _fmt_score(value: Optional[float], digits: int = 2) -> str:
+    return "-" if value is None else f"{value:.{digits}f}"
+
+
+@research_app.command("list")
+def research_list(
+    symbol: Annotated[
+        Optional[str],
+        typer.Option("--symbol", "-s", help="Only this symbol (e.g. OGDC)"),
+    ] = None,
+) -> None:
+    """List research files in data/research/, newest first, with key scores."""
+    store = _research_store()
+    files = store.scan(symbol)
+    if not files:
+        console.print(
+            f"[dim yellow]No research files found in {store.research_dir}.[/dim yellow]"
+        )
+        return
+
+    table = Table(title=f"Research files ({store.research_dir})", box=box.ROUNDED)
+    for col in ("Symbol", "Date", "Stance", "Sentiment", "Outlook 1-4w", "Risk", "Conf.", "Status"):
+        table.add_column(col)
+    for rf in files:
+        rep = rf.report
+        status = (
+            "[green]OK[/green]"
+            if rf.is_valid and not rf.warnings
+            else ("[yellow]OK (warnings)[/yellow]" if rf.is_valid else "[red]INVALID[/red]")
+        )
+        table.add_row(
+            rf.symbol,
+            str(rf.research_date or "?"),
+            (rep.recommendation.stance or "-") if rep else "-",
+            _fmt_score(rep.scores.overall_sentiment) if rep else "-",
+            _fmt_score(rep.scores.outlook_short_term) if rep else "-",
+            _fmt_score(rep.scores.risk_score, 0) if rep else "-",
+            _fmt_score(rep.scores.confidence) if rep else "-",
+            status,
+        )
+    console.print(table)
+
+
+@research_app.command("validate")
+def research_validate(
+    symbol: Annotated[
+        Optional[str],
+        typer.Option("--symbol", "-s", help="Only this symbol (e.g. OGDC)"),
+    ] = None,
+) -> None:
+    """Check research files against the schema; exits with code 1 if any file is invalid."""
+    store = _research_store()
+    files = store.scan(symbol)
+    if not files:
+        console.print(f"[dim yellow]No research files in {store.research_dir}.[/dim yellow]")
+        return
+
+    invalid = 0
+    for rf in files:
+        if rf.is_valid:
+            console.print(f"[green]OK[/green]      {rf.path.name}")
+        else:
+            invalid += 1
+            console.print(f"[red]INVALID[/red] {rf.path.name}")
+        for err in rf.errors:
+            console.print(f"    [red]error:[/red] {err}")
+        for warn in rf.warnings:
+            console.print(f"    [yellow]warning:[/yellow] {warn}")
+        if not rf.markdown_path.exists():
+            console.print(f"    [yellow]warning:[/yellow] no matching {rf.markdown_path.name}")
+
+    console.print(f"\n{len(files) - invalid} valid, {invalid} invalid.")
+    if invalid:
+        raise typer.Exit(code=1)
+
+
+@research_app.command("show")
+def research_show(
+    symbol: Annotated[str, typer.Option("--symbol", "-s", help="PSX symbol (e.g. OGDC)")],
+) -> None:
+    """Show the latest valid research for a symbol."""
+    store = _research_store()
+    report = store.latest(symbol)
+    if report is None:
+        console.print(f"[dim yellow]No valid research for {symbol.upper()}.[/dim yellow]")
+        raise typer.Exit(code=1)
+
+    s = report.scores
+    rec = report.recommendation
+    lines = [
+        f"[bold]{report.symbol}[/bold] {report.company_name or ''}",
+        f"Research date: {report.research_date} (data as of {report.data_as_of or '?'})",
+        f"Stance: {rec.stance or '-'}  Fair value: {_fmt_score(rec.fair_value_pkr)} PKR  "
+        f"Upside: {_fmt_score(rec.upside_pct, 1)}%",
+        f"Sentiment {_fmt_score(s.overall_sentiment)} | Outlook short "
+        f"{_fmt_score(s.outlook_short_term)} / medium {_fmt_score(s.outlook_medium_term)} | "
+        f"Risk {_fmt_score(s.risk_score, 0)} | Confidence {_fmt_score(s.confidence)}",
+    ]
+    if report.key_takeaways:
+        lines.append("")
+        lines.extend(f"- {t}" for t in report.key_takeaways)
+    console.print(Panel("\n".join(lines), title="Latest research", box=box.ROUNDED))
 
 
 if __name__ == "__main__":

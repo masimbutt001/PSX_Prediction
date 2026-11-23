@@ -313,7 +313,8 @@ Streamlit Application
 ├── Home (app.py)                   -> System status, universe overview, data diagnostics
 ├── 1_Market_Overview.py            -> Full-universe monitoring, signal badges, sector charts
 ├── 2_Stock_Analysis.py             -> Candlestick charts, technical indicators, ML prediction cards
-└── 3_Model_Performance.py          -> Backtesting simulator, equity curves, drawdown analysis
+├── 3_Model_Performance.py          -> Backtesting simulator, equity curves, drawdown analysis
+└── 4_Research.py                   -> Stock research files, score history, catalysts, risks, sources
 ```
 
 1. **Home (`app.py`)**:
@@ -334,6 +335,38 @@ Streamlit Application
    - **Equity Growth Curve**: Compares strategy portfolio value against benchmark in Pakistani Rupees (PKR).
    - **Underwater Drawdown Chart**: Shaded area chart tracking portfolio drawdowns from peak equity.
    - **Performance KPI Grid**: Real-time calculation of Sharpe Ratio, CAGR, Max Drawdown %, and Win Rate %.
+
+5. **Research (`pages/4_Research.py`)**:
+   - Latest research for every stock, ranked by recency-weighted short-term outlook, with stale research flagged.
+   - Per stock: every research date, score history chart, stance and fair value, the full Markdown report, catalysts, risks, news, financials, upcoming events and sources.
+   - Shows whether the latest prediction agrees with the research.
+
+---
+
+## Stock Research (Google Antigravity)
+
+Research is written by an AI agent, not by this app. Paste the prompt in
+[`docs/research/antigravity_research_prompt.md`](docs/research/antigravity_research_prompt.md)
+into Google Antigravity with this folder open. For each stock it writes
+`data/research/<SYMBOL>_<YYYY-MM-DD>.json` (strict schema, version 1.0) and a matching `.md`
+report. `data/research/` is gitignored and stays on your machine.
+
+```bash
+uv run psx research list                 # all research files with key scores
+uv run psx research validate             # schema check; exit code 1 if any file is invalid
+uv run psx research show --symbol OGDC   # latest research summary
+```
+
+How research reaches predictions:
+- `psx features merge` and `psx predict` add `research_*` features (sentiment, outlook, stance,
+  fundamentals, valuation, risk, upside, days to next event).
+- Point in time: a session only sees research dated on or before it, so backtests have no look-ahead.
+- Recency decay: influence halves every 30 days, scaled by the research's own confidence, and
+  stops after 120 days. Without research the features are neutral (0).
+- Each prediction stores the research snapshot it used (`research_json`), shown on the Stock
+  Analysis and Research pages.
+- The model only learns from research once there is research history across many dates, so
+  run research regularly (for example weekly) for it to carry weight.
 
 ---
 

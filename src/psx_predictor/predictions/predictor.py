@@ -15,6 +15,12 @@ from psx_predictor.models.split import DEFAULT_TECHNICAL_FEATURES
 from psx_predictor.models.trees import RandomForestBaseline, XGBoostBaseline
 from psx_predictor.news.calendar import PSXMarketCalendar
 from psx_predictor.predictions.registry import PredictionRecord, PredictionRegistry
+from psx_predictor.research.features import (
+    RESEARCH_FEATURE_COLUMNS,
+    build_research_features,
+    research_context_for_date,
+)
+from psx_predictor.research.store import ResearchStore
 from psx_predictor.storage.parquet_io import read_parquet
 from psx_predictor.storage.paths import ensure_directories
 
@@ -42,6 +48,7 @@ class LivePredictor:
         model_name: str = "xgboost",
         target_col: str = "target_next_day_dir",
         log_to_registry: bool = True,
+        use_research: bool = True,
     ) -> PredictionRecord:
         """Generate prediction for the next trading session and register it.
 
@@ -50,6 +57,8 @@ class LivePredictor:
             model_name: 'xgboost', 'random_forest', or 'logistic'.
             target_col: Prediction target column name.
             log_to_registry: Whether to persist the forecast in predictions.parquet.
+            use_research: Add point-in-time research features from data/research/ when
+                research files exist for the symbol, and attach the research snapshot.
 
         Returns:
             Constructed and logged PredictionRecord.
@@ -62,8 +71,19 @@ class LivePredictor:
                 f"Please run 'psx features build --with-targets --symbols {clean_sym}' first."
             )
 
-        df = read_parquet(feat_path)
+        df = read_parquet(feat_path).reset_index(drop=True)
         feature_cols = [c for c in DEFAULT_TECHNICAL_FEATURES if c in df.columns]
+
+        reports = (
+            ResearchStore(storage_paths=self.storage_paths).load_reports(clean_sym)
+            if use_research
+            else []
+        )
+        if reports:
+            research_df = build_research_features(df["trade_date"], reports)
+            for col in RESEARCH_FEATURE_COLUMNS:
+                df[col] = research_df[col].to_numpy()
+            feature_cols = feature_cols + RESEARCH_FEATURE_COLUMNS
 
         # The last row represents contemporaneous session T (where target T+1 is NaN)
         last_row = df.iloc[-1]
@@ -131,6 +151,13 @@ class LivePredictor:
             except Exception:
                 drivers = {}
 
+        research_context: dict[str, object] = {}
+        if reports:
+            research_context = research_context_for_date(reports, last_dt)
+            outlook = research_context.get("outlook_short_term")
+            if isinstance(outlook, (int, float)) and signal != "HOLD" and outlook != 0:
+                research_context["agrees_with_model"] = (outlook > 0) == (signal == "BUY")
+
         record = PredictionRecord(
             symbol=clean_sym,
             target_date=str(target_date),
@@ -142,6 +169,7 @@ class LivePredictor:
             confidence=round(confidence, 4),
             feature_version="1.0.0",
             drivers_json=json.dumps(drivers),
+            research_json=json.dumps(research_context),
         )
 
         if log_to_registry:
