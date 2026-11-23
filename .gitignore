@@ -29,6 +29,7 @@ data/processed/
 data/features/
 data/predictions/
 data/models/
+data/research/
 *.parquet
 *.duckdb
 *.tmp
