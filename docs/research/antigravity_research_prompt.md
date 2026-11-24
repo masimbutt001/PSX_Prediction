@@ -66,7 +66,7 @@ not edit any source code, and do not run git commands.
 5. **JSON number format.** Plain JSON numbers only: no commas, no `%`, no `Rs`, no `PKR`, no text like "approx". Percentages are written as percent numbers (12.5 means 12.5%). Money fields say their unit in the field name (`_pkr` = rupees, `_pkr_bn` = billions of rupees, `_pkr_mn` = millions of rupees).
 6. **Dates.** Always `YYYY-MM-DD`. If only a month is known use the first day of the month and note it in `data_gaps`.
 7. **Enums.** Use exactly the uppercase values listed in the schema. Do not add new values.
-8. **Same keys every time.** Every key in the schema must be present, even if its value is `null` or an empty list. Do not add extra keys at the top level (put anything extra in `notes`).
+8. **Same keys every time.** Every key in the schema must be present (including `video_brief`), even if its value is `null` or an empty list. Do not add extra keys at the top level (put anything extra in `notes`).
 9. **Balanced view.** List at least 3 risks and at least 2 catalysts. Do not be promotional.
 10. **This is research, not financial advice.** Keep the tone factual.
 
@@ -288,6 +288,22 @@ means a JSON number or `null`. Lists may be empty `[]` but must be present.
   },
 
   "key_takeaways": ["string (3 to 7 short bullet sentences)"],
+
+  "video_brief": {
+    "hook": "string: one spoken opening line, under 25 words, that makes a viewer want to keep watching",
+    "story": ["string: 4 to 6 short spoken sentences in order: the situation, what changed, why it matters, what to watch next"],
+    "tone": "UPBEAT|BALANCED|CAUTIOUS|NEGATIVE",
+    "chart_highlights": [
+      {
+        "chart": "SCORES|PRICE_TREND|PRICE_RANGE|VALUATION_VS_PEERS|EARNINGS|DIVIDENDS|RISK_GRID|EVENTS",
+        "highlight": "string: which bar, value or point to emphasise and the one-line reason"
+      }
+    ],
+    "pronunciations": [
+      { "term": "string (as written, e.g. OGDC, Rs, 1QFY27, KIBOR)", "say": "string (how to say it, e.g. O G D C, rupees, first quarter of fiscal twenty-seven, kai-bor)" }
+    ],
+    "closing_line": "string: one spoken sentence that wraps up, before the disclaimer"
+  },
   "data_gaps": ["string"],
   "notes": "string|null",
 
@@ -307,6 +323,26 @@ means a JSON number or `null`. Lists may be empty `[]` but must be present.
 
 In the real file replace every placeholder string (like `"number|null"`) with
 an actual value. `date_is_estimate` is `true` or `false`.
+
+## Video brief (`video_brief`)
+
+This section is read by the video prompt (`antigravity_video_prompt.md`) to make the
+narrated video sound like a human analyst, not a robot reading a table. Write it last,
+after all other sections, and only from what you found.
+
+- Write the way a good analyst talks to a colleague: plain words, contractions ("it's",
+  "they've"), short and varied sentences, one idea per sentence. No bullet-speak, no
+  "Furthermore", no "In conclusion".
+- Round numbers for speech ("about 6.6 times earnings", "roughly a 20 percent upside"),
+  but never change their meaning, and every number must exist elsewhere in the JSON.
+- `hook` should be specific to this stock today (a result, a payout, a risk, a valuation
+  gap), not generic ("Let's look at OGDC").
+- `chart_highlights`: 2 to 5 entries pointing at the most telling values, so the video can
+  animate and emphasise them while the narrator talks about them.
+- `pronunciations`: every ticker, abbreviation, fiscal period and local name a text-to-speech
+  voice could get wrong (tickers letter by letter, "Rs" as "rupees", "bn" as "billion",
+  Urdu or company names spelled phonetically).
+- `tone` must match the scores and stance. Keep it balanced: mention the main risk in `story`.
 
 ## Markdown report layout (`.md` file)
 

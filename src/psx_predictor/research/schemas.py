@@ -238,6 +238,37 @@ class MarketSentiment(_Section):
     notes: Optional[str] = None
 
 
+class ChartHighlight(_Section):
+    chart: Literal[
+        "SCORES",
+        "PRICE_TREND",
+        "PRICE_RANGE",
+        "VALUATION_VS_PEERS",
+        "EARNINGS",
+        "DIVIDENDS",
+        "RISK_GRID",
+        "EVENTS",
+        "OTHER",
+    ] = "OTHER"
+    highlight: str = ""
+
+
+class Pronunciation(_Section):
+    term: str
+    say: str
+
+
+class VideoBrief(_Section):
+    """Spoken-word material for the research video (optional; added after schema 1.0)."""
+
+    hook: Optional[str] = None
+    story: list[str] = Field(default_factory=list)
+    tone: Optional[Literal["UPBEAT", "BALANCED", "CAUTIOUS", "NEGATIVE"]] = None
+    chart_highlights: list[ChartHighlight] = Field(default_factory=list)
+    pronunciations: list[Pronunciation] = Field(default_factory=list)
+    closing_line: Optional[str] = None
+
+
 class Source(_Section):
     id: str
     title: str = ""
@@ -285,6 +316,7 @@ class ResearchReport(BaseModel):
     analyst_views: list[AnalystView] = Field(default_factory=list)
     market_sentiment: MarketSentiment = Field(default_factory=MarketSentiment)
     key_takeaways: list[str] = Field(default_factory=list)
+    video_brief: Optional[VideoBrief] = None
     data_gaps: list[str] = Field(default_factory=list)
     notes: Optional[str] = None
     sources: list[Source] = Field(default_factory=list)
@@ -297,3 +329,5 @@ class ResearchReport(BaseModel):
 
 
 EXPECTED_TOP_LEVEL_KEYS: frozenset[str] = frozenset(ResearchReport.model_fields.keys())
+# Keys added after files were already being written; their absence is not worth a warning.
+OPTIONAL_TOP_LEVEL_KEYS: frozenset[str] = frozenset({"video_brief"})

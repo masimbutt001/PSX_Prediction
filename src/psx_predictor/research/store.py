@@ -13,6 +13,7 @@ from pydantic import ValidationError
 from psx_predictor.config.loader import load_config
 from psx_predictor.research.schemas import (
     EXPECTED_TOP_LEVEL_KEYS,
+    OPTIONAL_TOP_LEVEL_KEYS,
     RESEARCH_SCHEMA_VERSION,
     ResearchReport,
 )
@@ -90,7 +91,7 @@ def validate_research_data(
     extra = sorted(set(data.keys()) - EXPECTED_TOP_LEVEL_KEYS)
     if extra:
         warnings.append(f"Unknown top-level keys ignored: {', '.join(extra)}")
-    missing = sorted(EXPECTED_TOP_LEVEL_KEYS - set(data.keys()))
+    missing = sorted(EXPECTED_TOP_LEVEL_KEYS - OPTIONAL_TOP_LEVEL_KEYS - set(data.keys()))
     if missing:
         warnings.append(f"Missing keys filled with defaults: {', '.join(missing)}")
 
