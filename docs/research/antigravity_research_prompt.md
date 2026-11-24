@@ -6,11 +6,14 @@ Copy everything between the two `====` lines into Antigravity, with the
 
 After it finishes, run `uv run psx research validate` to check the files, then open the
 Research page in the dashboard (`uv run psx dashboard`). The app reads schema version 1.0
-(`src/psx_predictor/research/schemas.py`); if you change the schema here, change it there too.
+(`D:\Development\PSX_Prediction\src\psx_predictor\research\schemas.py`); if you change the schema here, change it there too.
 
 ====================================================================
 
 ## Task
+
+Project root: `D:\Development\PSX_Prediction`. Every path in this prompt is absolute; use them exactly as
+written, whatever folder the terminal happens to be in.
 
 You are an equity research analyst covering the Pakistan Stock Exchange (PSX).
 Research each stock listed below using live web sources, then save the results
@@ -18,17 +21,17 @@ as files in this workspace. The files are read by a Python app, so the JSON
 must follow the schema below exactly.
 
 SYMBOLS: OGDC
-(Comma separated. Supported: the KMI-30 universe in config/stocks.yaml, e.g. AIRLINK, ATRL, CPHL, DGKC, EFERT, ENGROH, FCCL, FFC, FFL, GAL, GHNI, HCAR, HUBC, LUCK, MARI, MEBL, MLCF, NML, NRL, OGDC, PAEL, PPL, PRL, PSO, SAZEW, SEARL, SNGP, SSGC, SYS, TREET)
+(Comma separated. Supported: the KMI-30 universe in D:\Development\PSX_Prediction\config\stocks.yaml, e.g. AIRLINK, ATRL, CPHL, DGKC, EFERT, ENGROH, FCCL, FFC, FFL, GAL, GHNI, HCAR, HUBC, LUCK, MARI, MEBL, MLCF, NML, NRL, OGDC, PAEL, PPL, PRL, PSO, SAZEW, SEARL, SNGP, SSGC, SYS, TREET)
 
 RESEARCH_DATE: today's date in Pakistan time (Asia/Karachi), format YYYY-MM-DD.
 
 ## Output files (one pair per symbol)
 
-1. `data/research/<SYMBOL>_<RESEARCH_DATE>.json` – machine readable, strict schema below.
-2. `data/research/<SYMBOL>_<RESEARCH_DATE>.md` – human readable report.
+1. `D:\Development\PSX_Prediction\data\research\<SYMBOL>_<RESEARCH_DATE>.json` – machine readable, strict schema below.
+2. `D:\Development\PSX_Prediction\data\research\<SYMBOL>_<RESEARCH_DATE>.md` – human readable report.
 
-Example: `data/research/OGDC_2026-11-23.json` and `data/research/OGDC_2026-11-23.md`.
-Create the `data/research` folder if it does not exist. If files for the same
+Example: `D:\Development\PSX_Prediction\data\research\OGDC_2026-11-23.json` and `D:\Development\PSX_Prediction\data\research\OGDC_2026-11-23.md`.
+Create the `D:\Development\PSX_Prediction\data\research` folder if it does not exist. If files for the same
 symbol and date already exist, overwrite them. Do not write anywhere else, do
 not edit any source code, and do not run git commands.
 
@@ -326,7 +329,7 @@ an actual value. `date_is_estimate` is `true` or `false`.
 
 ## Video brief (`video_brief`)
 
-This section is read by the video prompt (`antigravity_video_prompt.md`) to make the
+This section is read by the video prompt (`D:\Development\PSX_Prediction\docs\research\antigravity_video_prompt.md`) to make the
 narrated video sound like a human analyst, not a robot reading a table. Write it last,
 after all other sections, and only from what you found.
 
@@ -373,7 +376,7 @@ Use these headings in this order, and keep the numbers identical to the JSON:
 1. Run this in the terminal from the workspace folder and fix any error it prints:
 
    ```
-   python -c "import json,glob; [json.load(open(f, encoding='utf-8')) for f in glob.glob('data/research/*.json')]; print('JSON OK')"
+   python -c "import json,glob; [json.load(open(f, encoding='utf-8')) for f in glob.glob(r'D:\Development\PSX_Prediction\data\research\*.json')]; print('JSON OK')"
    ```
 
 2. Confirm for each JSON file:

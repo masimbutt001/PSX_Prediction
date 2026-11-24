@@ -1,8 +1,8 @@
 # PSX Research Video Prompt (for Google Antigravity)
 
-Turns each research report in `data/research/` into an animated, narrated video in the
+Turns each research report in `D:\Development\PSX_Prediction\data\research\` into an animated, narrated video in the
 "broker research note" style. Run it after the research prompt
-(`antigravity_research_prompt.md`).
+(`D:\Development\PSX_Prediction\docs\research\antigravity_research_prompt.md`).
 
 Version 2: every element is animated (charts grow and count up, headings slide in, items
 reveal in step with the voice), and the narration uses a natural voice and a script
@@ -17,8 +17,11 @@ first if you need to.
 
 ## Task
 
+Project root: `D:\Development\PSX_Prediction`. Every path in this prompt is absolute; use them exactly as
+written, whatever folder the terminal happens to be in.
+
 You are a motion designer and financial video producer. For each stock research report in
-`data/research/`, make an animated explainer video in which every chart, number, heading
+`D:\Development\PSX_Prediction\data\research\`, make an animated explainer video in which every chart, number, heading
 and list is animated and timed to a natural, human-sounding narration. It must not look
 like a slideshow: something meaningful should move whenever the narrator introduces a new
 point, and nothing should sit as a static full slide for more than about 3 seconds.
@@ -36,7 +39,7 @@ TTS_ENGINE: kokoro         # kokoro (free, local) | elevenlabs | openai | edge (
 VOICE: af_heart            # kokoro: af_heart, af_bella, am_michael, bf_emma, bm_george
                            # elevenlabs: a voice name or id; openai: e.g. ash, coral, sage
 SPEAKING_RATE: 0.95        # 1.0 = engine default; slightly slower sounds more considered
-MUSIC: auto                # auto = use data/research/videos/_assets/music.mp3 if it exists; none = no music
+MUSIC: auto                # auto = use D:\Development\PSX_Prediction\data\research\videos\_assets\music.mp3 if it exists; none = no music
 RESOLUTION: 1920x1080
 FPS: 30
 TARGET_LENGTH: 3-4 minutes
@@ -44,13 +47,13 @@ TARGET_LENGTH: 3-4 minutes
 
 ## Inputs
 
-- `data/research/<SYMBOL>_<YYYY-MM-DD>.json`: the source of every number, date, score,
+- `D:\Development\PSX_Prediction\data\research\<SYMBOL>_<YYYY-MM-DD>.json`: the source of every number, date, score,
   chart value and source. Use its `video_brief` section (hook, story, tone,
   chart_highlights, pronunciations, closing_line) to write the narration. Older files may
   not have `video_brief`; then write the same material yourself from the rest of the JSON.
-- `data/research/<SYMBOL>_<YYYY-MM-DD>.md`: wording and context. If it disagrees with the
+- `D:\Development\PSX_Prediction\data\research\<SYMBOL>_<YYYY-MM-DD>.md`: wording and context. If it disagrees with the
   JSON, the JSON wins.
-- `data/processed/prices/<SYMBOL>.parquet` (read only, may be missing): daily prices from
+- `D:\Development\PSX_Prediction\data\processed\prices\<SYMBOL>.parquet` (read only, may be missing): daily prices from
   the app (`trade_date`, `close`, ...). Use the last 250 sessions up to the research date
   for an animated price-trend chart. Never use rows after the research date.
 - Skip a report if its JSON is missing or does not parse, and list it in the final summary.
@@ -58,25 +61,25 @@ TARGET_LENGTH: 3-4 minutes
 ## Outputs (per report)
 
 ```
-data/research/videos/<SYMBOL>_<YYYY-MM-DD>.mp4           final video
-data/research/videos/<SYMBOL>_<YYYY-MM-DD>.srt           subtitles
-data/research/videos/<SYMBOL>_<YYYY-MM-DD>/script.md     narration script by scene and beat
-data/research/videos/<SYMBOL>_<YYYY-MM-DD>/timeline.json scenes, beats, timings, animation cues
-data/research/videos/<SYMBOL>_<YYYY-MM-DD>/audio/        one WAV per beat + the mixed narration track
-data/research/videos/<SYMBOL>_<YYYY-MM-DD>/stills/       QA stills (see self-check)
-data/research/videos/index.json                          list of all videos
+D:\Development\PSX_Prediction\data\research\videos\<SYMBOL>_<YYYY-MM-DD>.mp4           final video
+D:\Development\PSX_Prediction\data\research\videos\<SYMBOL>_<YYYY-MM-DD>.srt           subtitles
+D:\Development\PSX_Prediction\data\research\videos\<SYMBOL>_<YYYY-MM-DD>\script.md     narration script by scene and beat
+D:\Development\PSX_Prediction\data\research\videos\<SYMBOL>_<YYYY-MM-DD>\timeline.json scenes, beats, timings, animation cues
+D:\Development\PSX_Prediction\data\research\videos\<SYMBOL>_<YYYY-MM-DD>\audio\        one WAV per beat + the mixed narration track
+D:\Development\PSX_Prediction\data\research\videos\<SYMBOL>_<YYYY-MM-DD>\stills\       QA stills (see self-check)
+D:\Development\PSX_Prediction\data\research\videos\index.json                          list of all videos
 ```
 
 Skip a report whose `.mp4` already exists unless `FORCE` is true.
 
-`index.json` is a list with one entry per video, newest first:
+`D:\Development\PSX_Prediction\data\research\videos\index.json` is a list with one entry per video, newest first:
 `{"symbol": "OGDC", "research_date": "2026-11-23", "video": "OGDC_2026-11-23.mp4", "subtitles": "OGDC_2026-11-23.srt", "duration_sec": 214.0, "style": "Broker research note (animated)", "language": "English", "voice": "kokoro/af_heart", "created_at": "<ISO timestamp>"}`.
 Replace the entry for the same symbol and date; keep the others.
 
 ## Ground rules
 
-1. Do not edit anything outside `data/research/videos/`. Do not change the project's
-   source code, `pyproject.toml` or its `.venv`. Do not run git commands.
+1. Do not edit anything outside `D:\Development\PSX_Prediction\data\research\videos\`. Do not change the project's
+   source code, `D:\Development\PSX_Prediction\pyproject.toml` or `D:\Development\PSX_Prediction\.venv`. Do not run git commands.
 2. Never write API keys into any file. Read them only from environment variables
    (`ELEVENLABS_API_KEY`, `OPENAI_API_KEY`). If the chosen engine's key is missing, stop and
    tell me, instead of silently switching to a worse voice.
@@ -88,21 +91,21 @@ Replace the entry for the same symbol and date; keep the others.
    financial advice."
 5. It runs on Windows 11. Use `pathlib` and UTF-8 everywhere.
 6. Music, fonts and images: use only files already on this computer or in
-   `data/research/videos/_assets/`. Do not download music or images from the web.
+   `D:\Development\PSX_Prediction\data\research\videos\_assets\`. Do not download music or images from the web.
 
 ## Tools to use
 
 - **Animation and rendering: Remotion** (React + TypeScript, renders every frame
   deterministically, built for data-driven video). Create the Remotion project in
-  `data/research/videos/_studio/`. It needs Node.js 20 or newer: check `node -v`; if Node
+  `D:\Development\PSX_Prediction\data\research\videos\_studio\`. It needs Node.js 20 or newer: check `node -v`; if Node
   is missing, stop and ask me to run `winget install OpenJS.NodeJS.LTS`. Use the official
   blank template (`npx create-video@latest`), TypeScript, and only Remotion's own packages
   plus `@remotion/google-fonts` (or the Segoe UI system font). Draw charts yourself with SVG
   and Remotion's `interpolate`, `spring` and `Easing`, not with a chart library, so every
   bar and label can be animated. Remotion is free for individuals; mention it in the
   summary if a company licence would apply.
-- **Data, narration and audio: Python** in `data/research/videos/_pipeline/` with its own
-  venv at `data/research/videos/_pipeline/.venv`. Packages: `pandas`, `pyarrow`,
+- **Data, narration and audio: Python** in `D:\Development\PSX_Prediction\data\research\videos\_pipeline\` with its own
+  venv at `D:\Development\PSX_Prediction\data\research\videos\_pipeline\.venv`. Packages: `pandas`, `pyarrow`,
   `soundfile`, `numpy`, `imageio-ffmpeg` (use `imageio_ffmpeg.get_ffmpeg_exe()` for every
   ffmpeg call), and the TTS package for the chosen engine (`kokoro` for kokoro,
   `elevenlabs` for elevenlabs, `openai` for openai, `edge-tts` for edge). Add
@@ -111,7 +114,7 @@ Replace the entry for the same symbol and date; keep the others.
 
 ## Step 1: write the narration for the ear
 
-Write `script.md` first. Each scene is split into **beats**: one beat is one to three
+Write `D:\Development\PSX_Prediction\data\research\videos\<SYMBOL>_<YYYY-MM-DD>\script.md` first. Each scene is split into **beats**: one beat is one to three
 sentences about one on-screen element, and each beat names the element it reveals or
 emphasises. Rules:
 
@@ -157,7 +160,7 @@ emphasises. Rules:
 
 ## Step 3: build the timeline
 
-From the beat audio durations, write `timeline.json`: for each scene, its start frame and
+From the beat audio durations, write `D:\Development\PSX_Prediction\data\research\videos\<SYMBOL>_<YYYY-MM-DD>\timeline.json`: for each scene, its start frame and
 length; for each beat, its start frame, length, text, caption words with timings, and the
 animation cue (which element enters or is emphasised at that moment). Remotion reads this
 file through `calculateMetadata`, so the video length always follows the audio. Each
@@ -246,20 +249,20 @@ Motion language (use these everywhere, consistently):
 
 - Render with Remotion: H.264, CRF 18, `yuv420p`, `FPS`, `RESOLUTION`, AAC 192 kbps,
   using the mixed narration (+ music) track. Use `--concurrency` of half the CPU cores.
-- Write the `.srt`, then update `index.json`.
+- Write `D:\Development\PSX_Prediction\data\research\videos\<SYMBOL>_<YYYY-MM-DD>.srt`, then update `D:\Development\PSX_Prediction\data\research\videos\index.json`.
 
 ## Final self-check (do this before you finish)
 
 1. For each new video, render stills with `npx remotion still` at three moments of three
    different scenes (mid-animation, the moment a highlight is narrated, and the settled
-   end state) into `stills/`, open them, and check: nothing overlaps or is cut off, numbers
+   end state) into `D:\Development\PSX_Prediction\data\research\videos\<SYMBOL>_<YYYY-MM-DD>\stills\`, open them, and check: nothing overlaps or is cut off, numbers
    match the JSON exactly, labels sit on their bars, captions do not cover charts.
 2. Confirm with ffprobe (from imageio-ffmpeg, or `ffmpeg -i <file> -f null -`) that the
    video has one video and one audio stream, the duration is within the target length,
    and narration loudness is about -16 LUFS.
 3. Confirm the disclaimer is spoken and shown, and no scene sits with nothing moving for
    more than 3 seconds while narration is playing.
-4. `index.json` parses as JSON and lists every video in the folder.
+4. `D:\Development\PSX_Prediction\data\research\videos\index.json` parses as JSON and lists every video in the folder.
 5. Reply with a table: symbol, research date, video path, duration, voice used, scenes
    skipped (no data), and any problems or beats you had to regenerate.
 
