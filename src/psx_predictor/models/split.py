@@ -39,6 +39,28 @@ DEFAULT_TECHNICAL_FEATURES: list[str] = [
     "rel_volume_20",
     "obv",
     "volume_roc_5",
+    # Trend strength, oscillators, cloud, VWAP, Supertrend, channels and money flow.
+    # Only scale-free versions go to the models (distances and bounded oscillators).
+    "adx_14",
+    "plus_di_14",
+    "minus_di_14",
+    "stoch_k_14",
+    "stoch_d_14",
+    "stochrsi_k_14",
+    "stochrsi_d_14",
+    "price_to_tenkan_9",
+    "price_to_kijun_26",
+    "tenkan_kijun_pct",
+    "price_to_cloud",
+    "cloud_thickness_pct",
+    "price_to_vwap_20",
+    "price_to_avwap_ytd",
+    "supertrend_dir",
+    "price_to_supertrend",
+    "donchian_pos_20",
+    "donchian_width_pct_20",
+    "mfi_14",
+    "cmf_20",
 ]
 
 

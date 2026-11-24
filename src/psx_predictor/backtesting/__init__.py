@@ -14,6 +14,12 @@ from psx_predictor.backtesting.simulator import (
     TradeRecord,
     TransactionCostModel,
 )
+from psx_predictor.backtesting.swing import (
+    SwingBacktestResult,
+    SwingStrategyConfig,
+    SwingTrade,
+    run_swing_backtest,
+)
 from psx_predictor.backtesting.walk_forward import WalkForwardFold, WalkForwardPartitioner
 
 __all__ = [
@@ -29,4 +35,8 @@ __all__ = [
     "calculate_backtest_metrics",
     "display_backtest_report",
     "BacktestRunner",
+    "SwingStrategyConfig",
+    "SwingBacktestResult",
+    "SwingTrade",
+    "run_swing_backtest",
 ]
