@@ -23,6 +23,10 @@ MARKET_INDICATORS = (
     MacroIndicatorType.KSE_100,
 )
 
+# Series whose absence is only a warning: no free source reliably publishes the KSE-100 history,
+# so a missing index day must not fail the whole daily run.
+OPTIONAL_MARKET_INDICATORS = (MacroIndicatorType.KSE_100,)
+
 
 @dataclass
 class MacroUpdateSummary:
@@ -36,6 +40,18 @@ class MacroUpdateSummary:
     daily_feature_records: int = 0
     latest_indicators: dict[str, float] = field(default_factory=dict)
     missing_indicators: list[str] = field(default_factory=list)
+
+    @property
+    def missing_required_indicators(self) -> list[str]:
+        """Missing series that should fail the daily macro step."""
+        optional = {ind.value for ind in OPTIONAL_MARKET_INDICATORS}
+        return [ind for ind in self.missing_indicators if ind not in optional]
+
+    @property
+    def missing_optional_indicators(self) -> list[str]:
+        """Missing series that are only reported as a warning."""
+        optional = {ind.value for ind in OPTIONAL_MARKET_INDICATORS}
+        return [ind for ind in self.missing_indicators if ind in optional]
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)

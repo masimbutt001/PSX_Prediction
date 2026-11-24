@@ -116,7 +116,7 @@ def test_universe_snapshot_and_staleness(tmp_path: Path, preds: pd.DataFrame) ->
     assert len(ogdc["trend"]) == data.SPARK_SESSIONS
     assert ogdc["signal"] == "BUY" and ogdc["research"] == "Buy"
     stale = data.stale_symbols(snap)
-    assert "PPL" in stale and "OGDC" not in stale and "ENGRO" in stale
+    assert "PPL" in stale and "OGDC" not in stale and "ENGROH" in stale
 
     text, ok, warn = freshness_label(snap)
     assert ok and warn and "behind" in text

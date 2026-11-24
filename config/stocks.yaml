@@ -12,10 +12,11 @@ stocks:
     yahoo_ticker: "PPL.KA"
     enabled: true
 
-  - symbol: ENGRO
-    name: "Engro Corporation Limited"
+  # Engro Corporation (ENGRO) was replaced on PSX by Engro Holdings (ENGROH) in 2025.
+  - symbol: ENGROH
+    name: "Engro Holdings Limited"
     sector: "Fertilizer / Conglomerate"
-    yahoo_ticker: "ENGRO.KA"
+    yahoo_ticker: "ENGROH.KA"
     enabled: true
 
   - symbol: FFC

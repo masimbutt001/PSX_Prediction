@@ -29,7 +29,7 @@ def test_default_config_loads() -> None:
     symbols = [s.symbol for s in config.stocks]
     assert "OGDC" in symbols
     assert "PPL" in symbols
-    assert "ENGRO" in symbols
+    assert "ENGROH" in symbols
     assert "LUCK" in symbols
 
     # Verify field values of OGDC
@@ -124,7 +124,7 @@ def test_cli_config_show(cli_runner: CliRunner) -> None:
     assert result.exit_code == 0
     assert "OGDC" in result.output
     assert "PPL" in result.output
-    assert "ENGRO" in result.output
+    assert "ENGROH" in result.output
     assert "Active Settings" in result.output
     assert "ENABLED" in result.output
 

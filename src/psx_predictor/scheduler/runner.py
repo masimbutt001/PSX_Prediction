@@ -207,7 +207,7 @@ class DailyPipelineRunner:
             f"Synchronized macroeconomic indicators: {len(summary.indicators_updated)} series, "
             f"latest session {summary.latest_session or 'N/A'}"
         )
-        if summary.missing_indicators:
+        if summary.missing_required_indicators:
             # Data that did arrive is already saved; earlier saved values are kept for the rest.
             raise RuntimeError(
                 "No fresh data for "
@@ -215,6 +215,13 @@ class DailyPipelineRunner:
                 + "; kept previously saved values. "
                 + msg
             )
+        if summary.missing_optional_indicators:
+            msg += (
+                " (no fresh data for "
+                + ", ".join(summary.missing_optional_indicators)
+                + "; kept previously saved values)"
+            )
+            logger.warning(msg)
         return msg
 
     def _step_build_features(self, dry_run: bool) -> str:
