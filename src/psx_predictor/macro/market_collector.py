@@ -117,52 +117,98 @@ class MarketMacroCollector:
 
         return points
 
+    # Yahoo symbols tried in order for the KSE-100 index; Yahoo has listed it under both.
+    KSE100_YAHOO_TICKERS = ("^KSE100", "^KSE")
+    # Symbol of the KSE-100 index on the PSX Data Portal.
+    KSE100_DPS_SYMBOL = "KSE100"
+
     def fetch_kse100(
         self,
         start_date: Optional[datetime.date] = None,
         end_date: Optional[datetime.date] = None,
     ) -> list[MacroDataPoint]:
-        """Fetch historical KSE-100 benchmark index levels (^KSE100)."""
+        """Fetch KSE-100 index closes: Yahoo Finance first, then the PSX Data Portal."""
         start = start_date or datetime.date(2024, 1, 1)
         end = end_date or datetime.date.today()
-        points: list[MacroDataPoint] = []
 
+        for yahoo_symbol in self.KSE100_YAHOO_TICKERS:
+            points = self._kse100_from_yahoo(yahoo_symbol, start, end)
+            if points:
+                return points
+
+        points = self._kse100_from_dps(start, end)
+        if points:
+            return points
+
+        if self.fallback_on_error:
+            logger.info("Generating deterministic fallback seed data for KSE-100.")
+            return self._generate_kse100_seed(start, end)
+        return []
+
+    @staticmethod
+    def _kse100_point(day: str, value: float, source: str) -> MacroDataPoint:
+        return MacroDataPoint(
+            indicator=MacroIndicatorType.KSE_100.value,
+            observation_date=day,
+            public_release_date=day,
+            value=round(value, 2),
+            unit="POINTS",
+            frequency="DAILY",
+            source=source,
+            notes="PSX KSE-100 Benchmark Index close",
+        )
+
+    def _kse100_from_yahoo(
+        self, yahoo_symbol: str, start: datetime.date, end: datetime.date
+    ) -> list[MacroDataPoint]:
+        points: list[MacroDataPoint] = []
         try:
             import yfinance as yf
 
             end_excl = end + datetime.timedelta(days=1)
-            ticker = yf.Ticker("^KSE100")
-            df = ticker.history(
+            df = yf.Ticker(yahoo_symbol).history(
                 start=start.isoformat(),
                 end=end_excl.isoformat(),
                 auto_adjust=False,
             )
             if not df.empty and "Close" in df.columns:
-                close_series = df["Close"].dropna()
-                for dt_idx, val in close_series.items():
-                    dt_str = pd.to_datetime(dt_idx).strftime("%Y-%m-%d")
+                for dt_idx, val in df["Close"].dropna().items():
                     f_val = float(val.iloc[0]) if hasattr(val, "iloc") else float(val)
                     if not np.isnan(f_val) and f_val > 0:
+                        day = pd.to_datetime(dt_idx).strftime("%Y-%m-%d")
                         points.append(
-                            MacroDataPoint(
-                                indicator=MacroIndicatorType.KSE_100.value,
-                                observation_date=dt_str,
-                                public_release_date=dt_str,
-                                value=round(f_val, 2),
-                                unit="POINTS",
-                                frequency="DAILY",
-                                source="Yahoo Finance (^KSE100)",
-                                notes="PSX KSE-100 Benchmark Index close",
-                            )
+                            self._kse100_point(day, f_val, f"Yahoo Finance ({yahoo_symbol})")
                         )
         except Exception as e:
-            logger.warning(f"Could not fetch KSE-100 from Yahoo Finance: {e}")
-
-        if not points and self.fallback_on_error:
-            logger.info("Generating deterministic fallback seed data for KSE-100.")
-            points = self._generate_kse100_seed(start, end)
-
+            logger.warning(f"Could not fetch KSE-100 from Yahoo Finance ({yahoo_symbol}): {e}")
+        if not points:
+            logger.info(f"Yahoo Finance returned no KSE-100 data for {yahoo_symbol}.")
         return points
+
+    def _kse100_from_dps(
+        self, start: datetime.date, end: datetime.date
+    ) -> list[MacroDataPoint]:
+        try:
+            from psx_predictor.collectors.dps_collector import DPSCollector
+
+            collector = DPSCollector()
+            df = collector.normalize(
+                collector.fetch_raw(self.KSE100_DPS_SYMBOL, start, end), self.KSE100_DPS_SYMBOL
+            )
+        except Exception as e:
+            logger.warning(f"Could not fetch KSE-100 from PSX Data Portal: {e}")
+            return []
+        if df.empty or "close" not in df.columns:
+            return []
+        dates = pd.to_datetime(df["trade_date"]).dt.date
+        df = df[(dates >= start) & (dates <= end)]
+        return [
+            self._kse100_point(
+                pd.Timestamp(day).strftime("%Y-%m-%d"), float(close), "PSX Data Portal (KSE100)"
+            )
+            for day, close in zip(df["trade_date"], df["close"], strict=True)
+            if pd.notna(close) and float(close) > 0
+        ]
 
     def fetch_all(
         self,

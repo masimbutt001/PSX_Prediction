@@ -17,6 +17,7 @@ import pytest
 import respx
 
 from psx_predictor.collectors.composite import CompositeCollector
+from psx_predictor.collectors.dps_collector import DPSCollector
 from psx_predictor.macro.market_collector import MarketMacroCollector
 from psx_predictor.macro.sbp_collector import SBPMacroCollector
 from psx_predictor.macro.storage import MacroStorage
@@ -80,6 +81,10 @@ class _FakeTicker:
         idx = pd.bdate_range(start=start, end=end, inclusive="left")
         base = {"PKR=X": 280.0, "BZ=F": 75.0}.get(self.ticker, 120000.0)
         return pd.DataFrame({"Close": np.linspace(base, base * 1.01, len(idx))}, index=idx)
+
+
+def _failing_dps_fetch(self: Any, symbol: str, start: Any, end: Any) -> Any:
+    raise ConnectionError("PSX Data Portal unreachable")
 
 
 class _FailingTicker(_FakeTicker):
@@ -156,6 +161,7 @@ def test_macro_update_never_invents_market_data(
     import yfinance
 
     monkeypatch.setattr(yfinance, "Ticker", _FailingTicker)
+    monkeypatch.setattr(DPSCollector, "fetch_raw", _failing_dps_fetch)
     storage = MacroStorage(storage_paths=ensure_directories(tmp_path / "data"))
 
     summary = storage.update(end_date=RUN_DATE)
@@ -265,3 +271,43 @@ def test_catch_up_runs_pipeline_once(tmp_path: Path, offline_network: Any) -> No
     assert runner.run_catch_up(now=now + datetime.timedelta(days=5)) is None
     assert len(runner.log_file.read_text(encoding="utf-8").splitlines()) == 1
 
+
+
+def test_kse100_falls_back_to_psx_data_portal(monkeypatch: pytest.MonkeyPatch) -> None:
+    """If Yahoo has no KSE-100 data, the index comes from the PSX Data Portal."""
+    import yfinance
+
+    monkeypatch.setattr(yfinance, "Ticker", _FailingTicker)
+    requested: list[str] = []
+    # 2026-11-19 and 2026-11-20 at 00:00 PKT, as DPS stamps sessions
+    rows = [[1795028400, 160000.0, 161000.0, 159500.0, 160500.0, 1000],
+            [1795114800, 160500.0, 162000.0, 160000.0, 161800.0, 1200]]
+
+    def fake_fetch(self: Any, symbol: str, start: Any, end: Any) -> Any:
+        requested.append(symbol)
+        return {"type": "timeseries_json", "payload": rows}
+
+    monkeypatch.setattr(DPSCollector, "fetch_raw", fake_fetch)
+    points = MarketMacroCollector().fetch_kse100(
+        datetime.date(2026, 11, 1), datetime.date(2026, 11, 20)
+    )
+
+    assert requested == ["KSE100"]
+    assert [(p.observation_date, p.value) for p in points] == [
+        ("2026-11-19", 160500.0),
+        ("2026-11-20", 161800.0),
+    ]
+    assert points[0].source == "PSX Data Portal (KSE100)"
+
+
+def test_news_step_survives_one_source_failing(tmp_path: Path, offline_network: Any) -> None:
+    """PSX announcements dropping the connection must not lose the RSS news."""
+    offline_network.post(DPSAnnouncementsCollector.ANNOUNCEMENTS_URL).mock(
+        side_effect=httpx.RemoteProtocolError("Server disconnected without sending a response.")
+    )
+    runner = DailyPipelineRunner(data_dir=tmp_path / "data", retry_delay=0.01, max_retries=1)
+
+    result = runner.run_step(DailyPipelineStep.COLLECT_NEWS)
+
+    assert result.status == "SUCCESS"
+    assert "RSS" in result.message and "skipped PSX announcements" in result.message
