@@ -15,10 +15,8 @@ from psx_predictor.collectors.base import BaseCollector
 from psx_predictor.collectors.composite import CompositeCollector
 from psx_predictor.config.loader import load_config
 from psx_predictor.news.calendar import PSXMarketCalendar
-from psx_predictor.processing.pipeline import (
-    DataBootstrapPipeline,
-    compute_continuous_adjusted_close,
-)
+from psx_predictor.processing.corporate_actions import apply_corporate_actions
+from psx_predictor.processing.pipeline import DataBootstrapPipeline
 from psx_predictor.storage.parquet_io import (
     DatasetNotFoundError,
     read_parquet,
@@ -300,22 +298,17 @@ class IncrementalUpdater:
             deduped_df = merged_df.drop_duplicates(subset=["symbol", "trade_date"], keep="last")
             sorted_df = deduped_df.sort_values(by="trade_date").reset_index(drop=True)
 
-            # 7. Retroactive continuous adjusted close recomputation
-            # If corporate action occurs in delta (or historical), re-run adjustment
-            has_dividends = (
-                "dividend_amount" in sorted_df.columns and (sorted_df["dividend_amount"] > 0).any()
-            )
-            has_splits = (
-                "split_ratio" in sorted_df.columns and (sorted_df["split_ratio"] != 1.0).any()
-            )
-            if has_dividends or has_splits:
-                sorted_df["adjusted_close"] = compute_continuous_adjusted_close(sorted_df)
+            # 7. Retroactive continuous adjusted close recomputation, including splits
+            #    and bonus issues the source left out (inferred from opening gaps)
+            sorted_df, actions = apply_corporate_actions(sorted_df)
+            for day, ratio in actions:
+                logger.info(f"[{clean_sym}] Corporate action inferred on {day}: x{ratio:g}")
 
             records_added = len(sorted_df) - len(existing_df)
             new_latest_str = str(sorted_df["trade_date"].max())
 
             # 8. Persist atomically
-            if not dry_run and records_added > 0:
+            if not dry_run and (records_added > 0 or actions):
                 write_parquet_atomic(sorted_df, target_file)
                 logger.success(
                     f"[{clean_sym}] Appended {records_added} new records (total: {len(sorted_df)})"

@@ -8,7 +8,6 @@ import pytest
 
 from psx_predictor.backtesting.swing import (
     SwingStrategyConfig,
-    adjust_for_corporate_actions,
     blackout_windows_from_news,
     entry_signals,
     market_uptrend,
@@ -143,13 +142,20 @@ def test_donchian_mfi_cmf_ranges() -> None:
 # ---------------------------------------------------------------- strategy inputs
 
 
-def test_corporate_action_gap_is_back_adjusted() -> None:
-    close = np.r_[np.full(10, 500.0), np.full(10, 100.0)]
-    df = _ohlcv(close)
-    adj, actions = adjust_for_corporate_actions(df)
-    assert len(actions) == 1 and actions[0][1] == pytest.approx(0.2)
-    assert np.allclose(adj["close"], 100.0)
-    assert adj["volume"].iloc[0] == pytest.approx(5_000_000.0)
+def test_swing_backtest_ignores_unadjusted_split() -> None:
+    """A 1:5 split in raw prices must not trigger the stop or show as a loss."""
+    df = _random_walk(600)
+    raw = df.copy()
+    cols = ["open", "high", "low", "close", "adjusted_close"]
+    raw.loc[:399, cols] = raw.loc[:399, cols] * 5.0
+    raw.loc[:399, "volume"] = raw.loc[:399, "volume"] / 5.0
+    res_clean = run_swing_backtest(df, "TEST")
+    res_raw = run_swing_backtest(raw, "TEST")
+    assert any("1 share became 5" in n for n in res_raw.notes)
+    assert res_raw.benchmark_metrics.max_drawdown == pytest.approx(
+        res_clean.benchmark_metrics.max_drawdown, abs=1e-3
+    )
+    assert len(res_raw.trades) == len(res_clean.trades)
 
 
 def test_blackout_windows_from_results_and_dividend_notices() -> None:

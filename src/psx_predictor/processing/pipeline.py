@@ -198,14 +198,13 @@ class DataBootstrapPipeline:
             # 2. Strict schema validation & deduplication
             validated_df = PriceDatasetValidator.validate_dataframe(df)
 
-            # 3. Compute/verify continuous adjusted close
-            if (
-                "dividend_amount" in validated_df.columns
-                and validated_df["dividend_amount"].sum() > 0
-            ) or (
-                "split_ratio" in validated_df.columns and (validated_df["split_ratio"] != 1.0).any()
-            ):
-                validated_df["adjusted_close"] = compute_continuous_adjusted_close(validated_df)
+            # 3. Record splits/bonus issues the source left out, then compute the
+            #    continuous adjusted close
+            from psx_predictor.processing.corporate_actions import apply_corporate_actions
+
+            validated_df, actions = apply_corporate_actions(validated_df)
+            for day, ratio in actions:
+                logger.info(f"[{clean_sym}] Corporate action inferred on {day}: x{ratio:g}")
 
             # 4. Atomically persist to processed storage
             if not dry_run:
