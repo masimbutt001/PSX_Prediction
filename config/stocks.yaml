@@ -1,22 +1,48 @@
-# Pakistan Stock Exchange (PSX) Top Liquid Universe
+# Pakistan Stock Exchange (PSX) universe: KMI-30 (KSE Meezan Index 30) constituents.
+# Source: https://dps.psx.com.pk/indices/KMI30 (as of 2026-11-24). PSX rebalances KMI-30
+# twice a year, so re-check the list after each recomposition.
+# Engro Corporation (ENGRO) was replaced on PSX by Engro Holdings (ENGROH) in 2025.
 stocks:
-  - symbol: OGDC
-    name: "Oil & Gas Development Company Limited"
-    sector: "Oil & Gas Exploration"
-    yahoo_ticker: "OGDC.KA"
+  - symbol: AIRLINK
+    name: "Air Link Communication Limited"
+    sector: "Technology & Communication"
+    yahoo_ticker: "AIRLINK.KA"
     enabled: true
 
-  - symbol: PPL
-    name: "Pakistan Petroleum Limited"
-    sector: "Oil & Gas Exploration"
-    yahoo_ticker: "PPL.KA"
+  - symbol: ATRL
+    name: "Attock Refinery Limited"
+    sector: "Refinery"
+    yahoo_ticker: "ATRL.KA"
     enabled: true
 
-  # Engro Corporation (ENGRO) was replaced on PSX by Engro Holdings (ENGROH) in 2025.
+  - symbol: CPHL
+    name: "Citi Pharma Limited"
+    sector: "Pharmaceuticals"
+    yahoo_ticker: "CPHL.KA"
+    enabled: true
+
+  - symbol: DGKC
+    name: "D.G. Khan Cement Company Limited"
+    sector: "Cement"
+    yahoo_ticker: "DGKC.KA"
+    enabled: true
+
+  - symbol: EFERT
+    name: "Engro Fertilizers Limited"
+    sector: "Fertilizer"
+    yahoo_ticker: "EFERT.KA"
+    enabled: true
+
   - symbol: ENGROH
     name: "Engro Holdings Limited"
     sector: "Fertilizer / Conglomerate"
     yahoo_ticker: "ENGROH.KA"
+    enabled: true
+
+  - symbol: FCCL
+    name: "Fauji Cement Company Limited"
+    sector: "Cement"
+    yahoo_ticker: "FCCL.KA"
     enabled: true
 
   - symbol: FFC
@@ -25,28 +51,28 @@ stocks:
     yahoo_ticker: "FFC.KA"
     enabled: true
 
-  - symbol: LUCK
-    name: "Lucky Cement Limited"
-    sector: "Cement"
-    yahoo_ticker: "LUCK.KA"
+  - symbol: FFL
+    name: "Fauji Foods Limited"
+    sector: "Food & Personal Care Products"
+    yahoo_ticker: "FFL.KA"
     enabled: true
 
-  - symbol: HBL
-    name: "Habib Bank Limited"
-    sector: "Commercial Banks"
-    yahoo_ticker: "HBL.KA"
+  - symbol: GAL
+    name: "Ghandhara Automobiles Limited"
+    sector: "Automobile Assembler"
+    yahoo_ticker: "GAL.KA"
     enabled: true
 
-  - symbol: MCB
-    name: "MCB Bank Limited"
-    sector: "Commercial Banks"
-    yahoo_ticker: "MCB.KA"
+  - symbol: GHNI
+    name: "Ghandhara Industries Limited"
+    sector: "Automobile Assembler"
+    yahoo_ticker: "GHNI.KA"
     enabled: true
 
-  - symbol: UBL
-    name: "United Bank Limited"
-    sector: "Commercial Banks"
-    yahoo_ticker: "UBL.KA"
+  - symbol: HCAR
+    name: "Honda Atlas Cars (Pakistan) Limited"
+    sector: "Automobile Assembler"
+    yahoo_ticker: "HCAR.KA"
     enabled: true
 
   - symbol: HUBC
@@ -55,14 +81,104 @@ stocks:
     yahoo_ticker: "HUBC.KA"
     enabled: true
 
+  - symbol: LUCK
+    name: "Lucky Cement Limited"
+    sector: "Cement"
+    yahoo_ticker: "LUCK.KA"
+    enabled: true
+
+  - symbol: MARI
+    name: "Mari Energies Limited"
+    sector: "Oil & Gas Exploration"
+    yahoo_ticker: "MARI.KA"
+    enabled: true
+
+  - symbol: MEBL
+    name: "Meezan Bank Limited"
+    sector: "Commercial Banks"
+    yahoo_ticker: "MEBL.KA"
+    enabled: true
+
+  - symbol: MLCF
+    name: "Maple Leaf Cement Factory Limited"
+    sector: "Cement"
+    yahoo_ticker: "MLCF.KA"
+    enabled: true
+
+  - symbol: NML
+    name: "Nishat Mills Limited"
+    sector: "Textile Composite"
+    yahoo_ticker: "NML.KA"
+    enabled: true
+
+  - symbol: NRL
+    name: "National Refinery Limited"
+    sector: "Refinery"
+    yahoo_ticker: "NRL.KA"
+    enabled: true
+
+  - symbol: OGDC
+    name: "Oil & Gas Development Company Limited"
+    sector: "Oil & Gas Exploration"
+    yahoo_ticker: "OGDC.KA"
+    enabled: true
+
+  - symbol: PAEL
+    name: "Pak Elektron Limited"
+    sector: "Cable & Electrical Goods"
+    yahoo_ticker: "PAEL.KA"
+    enabled: true
+
+  - symbol: PPL
+    name: "Pakistan Petroleum Limited"
+    sector: "Oil & Gas Exploration"
+    yahoo_ticker: "PPL.KA"
+    enabled: true
+
+  - symbol: PRL
+    name: "Pakistan Refinery Limited"
+    sector: "Refinery"
+    yahoo_ticker: "PRL.KA"
+    enabled: true
+
+  - symbol: PSO
+    name: "Pakistan State Oil Company Limited"
+    sector: "Oil & Gas Marketing"
+    yahoo_ticker: "PSO.KA"
+    enabled: true
+
+  - symbol: SAZEW
+    name: "Sazgar Engineering Works Limited"
+    sector: "Automobile Assembler"
+    yahoo_ticker: "SAZEW.KA"
+    enabled: true
+
+  - symbol: SEARL
+    name: "The Searle Company Limited"
+    sector: "Pharmaceuticals"
+    yahoo_ticker: "SEARL.KA"
+    enabled: true
+
+  - symbol: SNGP
+    name: "Sui Northern Gas Pipelines Limited"
+    sector: "Oil & Gas Marketing"
+    yahoo_ticker: "SNGP.KA"
+    enabled: true
+
+  - symbol: SSGC
+    name: "Sui Southern Gas Company Limited"
+    sector: "Oil & Gas Marketing"
+    yahoo_ticker: "SSGC.KA"
+    enabled: true
+
   - symbol: SYS
     name: "Systems Limited"
     sector: "Technology & Communication"
     yahoo_ticker: "SYS.KA"
     enabled: true
 
-  - symbol: GGL
-    name: "Ghani Global Glass Ltd."
-    sector: "GLASS & CERAMICS"
-    yahoo_ticker: "GGL.KA"
+  - symbol: TREET
+    name: "Treet Corporation Limited"
+    sector: "Food & Personal Care Products"
+    yahoo_ticker: "TREET.KA"
     enabled: true

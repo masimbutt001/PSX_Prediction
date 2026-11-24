@@ -2118,7 +2118,7 @@ def schedule_run_daily(
         typer.Option(
             "--symbols",
             "-s",
-            help="Comma-separated stock symbols (e.g. 'OGDC,HBL'). Default: all enabled.",
+            help="Comma-separated stock symbols (e.g. 'OGDC,MEBL'). Default: all enabled.",
         ),
     ] = None,
     dry_run: Annotated[
@@ -2297,7 +2297,7 @@ def health_check(
         typer.Option(
             "--symbols",
             "-s",
-            help="Comma-separated stock symbols to audit (e.g. 'OGDC,HBL'). Default: all enabled.",
+            help="Comma-separated stock symbols to audit (e.g. 'OGDC,MEBL'). Default: all enabled.",
         ),
     ] = None,
     detailed: Annotated[

@@ -145,7 +145,7 @@ uv run psx config show --config-dir /path/to/config
 uv run psx data bootstrap
 
 # Bootstrap specific symbols with custom lookback years
-uv run psx data bootstrap --symbols OGDC,HBL,LUCK --years 3
+uv run psx data bootstrap --symbols OGDC,MEBL,LUCK --years 3
 
 # Execute daily incremental price ingestion
 uv run psx data update
@@ -169,7 +169,7 @@ uv run psx features build --symbols OGDC,PPL
 uv run psx features merge
 
 # Merge specific symbols
-uv run psx features merge --symbols OGDC,HBL
+uv run psx features merge --symbols OGDC,MEBL
 ```
 
 ### 4. Machine Learning & Backtesting (`psx model`)
@@ -178,7 +178,7 @@ uv run psx features merge --symbols OGDC,HBL
 uv run psx model train --symbol OGDC --model-type stacking
 
 # Available model types: baseline, rf, lgbm, xgboost, stacking
-uv run psx model train --symbol HBL --model-type lgbm
+uv run psx model train --symbol MEBL --model-type lgbm
 
 # Run a walk-forward chronological backtest with 0.15% friction
 uv run psx model backtest --symbol OGDC --strategy momentum
@@ -265,7 +265,7 @@ uv run psx schedule run-daily --dry-run
 uv run psx schedule run-daily
 
 # Run the live pipeline for specific symbols, continuing if non-critical steps fail
-uv run psx schedule run-daily --symbols OGDC,HBL --continue-on-error
+uv run psx schedule run-daily --symbols OGDC,MEBL --continue-on-error
 
 # Command for Windows Task Scheduler / cron: does nothing on weekends and PSX holidays
 uv run psx schedule run-daily --continue-on-error --skip-non-trading-days
@@ -283,7 +283,7 @@ uv run psx schedule start --daemon
 uv run psx health check
 
 # Check health for a subset of symbols with detailed reporting
-uv run psx health check --symbols OGDC,HBL,SYS --detailed
+uv run psx health check --symbols OGDC,MEBL,SYS --detailed
 
 # Inspect Population Stability Index (PSI) and KS-test drift for a specific stock
 uv run psx health drift --symbol OGDC
@@ -453,7 +453,7 @@ uv run mypy src
 PSX_Prediction/
 ├── config/                         # Application & stock configuration
 │   ├── settings.yaml               # System parameters, paths, and timezones
-│   └── stocks.yaml                 # Configured PSX universe (OGDC, HBL, LUCK, etc.)
+│   └── stocks.yaml                 # Configured PSX universe (KMI-30: OGDC, MEBL, LUCK, etc.)
 ├── data/                           # Local-first Parquet analytical storage
 │   ├── raw/                        # Raw scraped prices, news, and macro series
 │   ├── processed/                  # Cleaned, split-adjusted OHLCV price series
