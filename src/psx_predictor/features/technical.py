@@ -3,6 +3,8 @@
 import numpy as np
 import pandas as pd
 
+from psx_predictor.processing.corporate_actions import adjusted_ohlcv
+
 
 def compute_log_returns(
     series: pd.Series, windows: tuple[int, ...] = (1, 3, 5, 10, 20)
@@ -553,10 +555,13 @@ def compute_all_technical_features(df: pd.DataFrame) -> pd.DataFrame:
     adj_price = (
         work_df["adjusted_close"] if "adjusted_close" in work_df.columns else work_df["close"]
     )
-    unadj_close = work_df["close"]
-    high = work_df["high"]
-    low = work_df["low"]
-    volume = work_df["volume"].astype(float)
+    # Bar-based indicators (ATR, ADX, Stochastic, Ichimoku, ...) use high/low/close
+    # scaled onto the adjusted basis, so a split or bonus issue is not read as a crash.
+    bars = adjusted_ohlcv(work_df)
+    unadj_close = bars["close"]
+    high = bars["high"]
+    low = bars["low"]
+    volume = bars["volume"].astype(float)
 
     feature_dict: dict[str, pd.Series] = {}
 

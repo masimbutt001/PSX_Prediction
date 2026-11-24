@@ -38,6 +38,7 @@ from psx_predictor.backtesting.simulator import (
     TransactionCostModel,
 )
 from psx_predictor.features.technical import compute_all_technical_features
+from psx_predictor.processing.corporate_actions import adjusted_ohlcv, apply_corporate_actions
 
 STRATEGY_NAME = "Swing pullback"
 
@@ -58,10 +59,6 @@ EVENT_KEYWORDS: tuple[str, ...] = (
 
 # News classifier categories that mean results or a payout are coming.
 EVENT_CATEGORIES: frozenset[str] = frozenset({"EARNINGS", "DIVIDEND"})
-
-# PSX daily price limits are about 10%, so an overnight gap beyond this is a
-# corporate action (split, bonus shares) rather than a real price move.
-CORPORATE_ACTION_GAP = 0.30
 
 
 @dataclass(frozen=True)
@@ -219,39 +216,13 @@ def market_uptrend(macro: Optional[pd.DataFrame], sma: int = 50) -> Optional[pd.
     return above.where(real.rolling(window=sma, min_periods=sma).mean().notna())
 
 
-def adjust_for_corporate_actions(
-    df: pd.DataFrame, max_gap: float = CORPORATE_ACTION_GAP
-) -> tuple[pd.DataFrame, list[tuple[Any, float]]]:
-    """Back-adjust prices for splits and bonus issues that the stored data leaves raw.
-
-    A PSX stock cannot move more than about 10% in a session, so an opening gap of more
-    than `max_gap` from the previous close is treated as a corporate action: every
-    earlier open/high/low/close is multiplied by the gap ratio (and volume divided by
-    it), as an adjusted price series would be. Returns the frame and the actions found.
-    """
-    out = df.copy()
-    prev_close = out["close"].shift(1)
-    ratio = out["open"] / prev_close
-    hits = out.index[(ratio < 1.0 - max_gap) | (ratio > 1.0 / (1.0 - max_gap))]
-    actions: list[tuple[Any, float]] = []
-    price_cols = [c for c in ("open", "high", "low", "close", "adjusted_close") if c in out]
-    for idx in hits:
-        factor = float(ratio.loc[idx])
-        if not math.isfinite(factor) or factor <= 0:
-            continue
-        before = out.index < idx
-        out.loc[before, price_cols] = out.loc[before, price_cols] * factor
-        if "volume" in out:
-            out.loc[before, "volume"] = out.loc[before, "volume"] / factor
-        actions.append((out.at[idx, "trade_date"], factor))
-    return out, actions
-
-
 def prepare_swing_frame(prices: pd.DataFrame) -> pd.DataFrame:
     """Daily OHLCV plus every indicator the strategy reads, oldest first.
 
     Splits and bonus issues missing from the stored prices are back-adjusted first
-    (see `adjust_for_corporate_actions`); the dates found are in `df.attrs["actions"]`.
+    (see `processing.corporate_actions`), and the bars are put on the adjusted basis,
+    so trades and indicators never see a split as a crash. Inferred actions are in
+    `df.attrs["actions"]` as (date, ratio).
     """
     df = prices.copy()
     if "trade_date" not in df.columns:
@@ -269,7 +240,9 @@ def prepare_swing_frame(prices: pd.DataFrame) -> pd.DataFrame:
     df["volume"] = df["volume"].fillna(0.0).astype(float)
     if "symbol" not in df.columns:
         df["symbol"] = "ASSET"
-    df, actions = adjust_for_corporate_actions(df)
+    df, actions = apply_corporate_actions(df)
+    df = adjusted_ohlcv(df)
+    df["adjusted_close"] = df["close"]
     # Indicators are always recomputed so they match the adjusted prices.
     df = compute_all_technical_features(df)
     df.attrs["actions"] = actions
@@ -449,10 +422,10 @@ def run_swing_backtest(
             f"{config.trend_sma}+ sessions for its SMA {config.trend_sma} trend filter."
         )
 
-    for day, factor in full.attrs.get("actions", []):
+    for day, ratio in full.attrs.get("actions", []):
         notes.append(
-            f"Prices before {day} adjusted by x{factor:.3f} for a split or bonus issue "
-            "missing from the stored data."
+            f"Prices before {day} adjusted for a split or bonus issue (1 share became "
+            f"{ratio:g}) missing from the stored data."
         )
     windows = blackout_windows or []
     use_market = config.use_market_filter and market_filter is not None

@@ -13,6 +13,7 @@ from loguru import logger
 from psx_predictor.config.loader import load_config
 from psx_predictor.features.targets import compute_all_prediction_targets
 from psx_predictor.features.technical import compute_all_technical_features
+from psx_predictor.processing.corporate_actions import apply_corporate_actions
 from psx_predictor.storage.parquet_io import (
     DatasetNotFoundError,
     read_parquet,
@@ -114,6 +115,11 @@ class TechnicalFeatureBuilder:
 
         logger.info(f"[{clean_sym}] Loading processed data from {source_file}...")
         df = read_parquet(source_file)
+        # Stored prices may predate split detection; adjust them here so features and
+        # targets never see a split as a crash.
+        df, actions = apply_corporate_actions(df)
+        for day, ratio in actions:
+            logger.info(f"[{clean_sym}] Adjusting for a corporate action on {day} (x{ratio:g})")
 
         logger.info(
             f"[{clean_sym}] Computing vectorized technical features for {len(df)} sessions..."
