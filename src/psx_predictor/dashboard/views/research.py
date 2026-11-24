@@ -1,32 +1,31 @@
-"""Page 4: Research — stock research files from data/research/ and how they feed predictions."""
+"""Research: stock research files from data/research/ and how they feed predictions."""
 
 import json
 
 import pandas as pd
 import streamlit as st
 
-from psx_predictor.config.loader import load_config
+from psx_predictor.dashboard import state
 from psx_predictor.dashboard.components.research_view import (
     create_score_history_chart,
     files_table,
     overview_table,
     score_history,
 )
+from psx_predictor.dashboard.components.ui import disclaimer, page_header
+from psx_predictor.dashboard.theme import style_figure
 from psx_predictor.predictions.registry import PredictionRegistry
 from psx_predictor.research.features import research_context_for_date
 from psx_predictor.research.store import ResearchStore
-from psx_predictor.storage.paths import get_storage_paths
 
-st.set_page_config(page_title="Research — PSX Predictor", page_icon="🔎", layout="wide")
-
-st.title("🔎 Stock Research")
-st.caption(
-    "Research files from data/research/ (written by the Antigravity research prompt in "
-    "docs/research/). Research only, not financial advice."
+page_header(
+    "Stock research",
+    "Research files in data/research/, written with the Antigravity research prompt in "
+    "docs/research/.",
 )
 
-cfg = load_config()
-paths = get_storage_paths(cfg.settings.data_dir)
+cfg = state.get_config()
+paths = state.get_paths()
 store = ResearchStore(research_dir=paths["root"] / "research")
 all_files = store.scan()
 
@@ -47,7 +46,7 @@ overview = overview_table(all_files)
 if overview.empty:
     st.warning("No valid research files. See the validation details below.")
 else:
-    st.dataframe(overview, use_container_width=True, hide_index=True)
+    st.dataframe(overview, width="stretch", hide_index=True)
 
 invalid = [f for f in all_files if not f.is_valid]
 if invalid:
@@ -63,7 +62,9 @@ st.divider()
 researched = sorted({f.symbol for f in all_files})
 config_symbols = [s.symbol for s in cfg.stocks]
 options = researched + [s for s in config_symbols if s not in researched]
-symbol = st.selectbox("Stock", options, index=0)
+current = state.selected_symbol()
+symbol = st.selectbox("Stock", options, index=options.index(current) if current in options else 0)
+state.select_symbol(symbol)
 
 sym_files = [f for f in all_files if f.symbol == symbol]
 if not sym_files:
@@ -71,11 +72,13 @@ if not sym_files:
     st.stop()
 
 st.markdown(f"**{len(sym_files)} research file(s) for {symbol}**")
-st.dataframe(files_table(sym_files), use_container_width=True, hide_index=True)
+st.dataframe(files_table(sym_files), width="stretch", hide_index=True)
 
 history = score_history(sym_files)
 if len(history) >= 2:
-    st.plotly_chart(create_score_history_chart(history, symbol), use_container_width=True)
+    st.plotly_chart(
+        style_figure(create_score_history_chart(history, symbol), height=360), width="stretch"
+    )
 
 date_labels = [str(f.research_date or f.path.stem) for f in sym_files]
 chosen_label = st.selectbox("Research date", date_labels, index=0)
@@ -158,7 +161,7 @@ with tabs[1]:
         pd.DataFrame([{"Score": k, "Value": v} for k, v in s.model_dump().items()]).astype(
             {"Value": "float64"}
         ),
-        use_container_width=True,
+        width="stretch",
         hide_index=True,
     )
 
@@ -169,7 +172,7 @@ with tabs[2]:
         if rep.catalysts:
             st.dataframe(
                 pd.DataFrame([c.model_dump() for c in rep.catalysts]),
-                use_container_width=True,
+                width="stretch",
                 hide_index=True,
             )
         else:
@@ -179,7 +182,7 @@ with tabs[2]:
         if rep.risks:
             st.dataframe(
                 pd.DataFrame([r.model_dump() for r in rep.risks]),
-                use_container_width=True,
+                width="stretch",
                 hide_index=True,
             )
         else:
@@ -190,7 +193,7 @@ with tabs[3]:
         news_df = pd.DataFrame([n.model_dump() for n in rep.news]).sort_values(
             "date", ascending=False
         )
-        st.dataframe(news_df, use_container_width=True, hide_index=True)
+        st.dataframe(news_df, width="stretch", hide_index=True)
     else:
         st.caption("No news listed.")
 
@@ -200,14 +203,14 @@ with tabs[4]:
     fund_rows = [{"Field": k, "Value": "-" if v is None else str(v)} for k, v in fund.items()]
     st.dataframe(
         pd.DataFrame(fund_rows),
-        use_container_width=True,
+        width="stretch",
         hide_index=True,
     )
     if rep.earnings:
         st.markdown("**Earnings**")
         st.dataframe(
             pd.DataFrame([e.model_dump() for e in rep.earnings]),
-            use_container_width=True,
+            width="stretch",
             hide_index=True,
         )
     if rep.dividends.history:
@@ -217,14 +220,14 @@ with tabs[4]:
         )
         st.dataframe(
             pd.DataFrame([d.model_dump() for d in rep.dividends.history]),
-            use_container_width=True,
+            width="stretch",
             hide_index=True,
         )
     if rep.analyst_views:
         st.markdown("**Analyst views**")
         st.dataframe(
             pd.DataFrame([a.model_dump() for a in rep.analyst_views]),
-            use_container_width=True,
+            width="stretch",
             hide_index=True,
         )
 
@@ -232,7 +235,7 @@ with tabs[5]:
     if rep.upcoming_events:
         st.dataframe(
             pd.DataFrame([e.model_dump() for e in rep.upcoming_events]),
-            use_container_width=True,
+            width="stretch",
             hide_index=True,
         )
     else:
@@ -253,3 +256,5 @@ with tabs[7]:
     for warn in rf.warnings:
         st.warning(warn)
     st.json(json.loads(rf.path.read_text(encoding="utf-8-sig")))
+
+disclaimer()
