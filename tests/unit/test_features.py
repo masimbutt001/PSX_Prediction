@@ -66,13 +66,13 @@ def test_indicator_exact_values() -> None:
     # SMA(5) at index 4: 30.0
     assert ma_dict["sma_5"].iloc[4] == 30.0
     # Normalized distance at index 4: (50 - 30) / 30 = 20 / 30 = 0.6667
-    assert np.isclose(ma_dict["dist_sma_5"].iloc[4], 20.0 / 30.0)
+    assert np.isclose(ma_dict["price_to_sma_5"].iloc[4], 20.0 / 30.0)
 
     # 2. Test Log Returns
     p = pd.Series([100.0, 110.0])
     rets = compute_log_returns(p, windows=(1,))
     expected = np.log(110.0 / 100.0)
-    assert np.isclose(rets["return_1d"].iloc[1], expected)
+    assert np.isclose(rets["log_ret_1d"].iloc[1], expected)
 
     # 3. Test RSI on strictly ascending prices
     asc_series = pd.Series([float(i) for i in range(1, 30)])
@@ -116,7 +116,7 @@ def test_zero_lookahead_perturbation() -> None:
         assert np.all(numeric_match), f"Look-ahead leakage detected in feature '{col}'!"
 
     # The final row at index 99 SHOULD differ between df1 and df2
-    assert feats1["return_1d"].iloc[99] != feats2["return_1d"].iloc[99]
+    assert feats1["log_ret_1d"].iloc[99] != feats2["log_ret_1d"].iloc[99]
 
 
 def test_no_inf_or_unexpected_nan() -> None:
@@ -206,3 +206,28 @@ def test_cli_features_build_command(tmp_path: Path, monkeypatch: pytest.MonkeyPa
     assert "Starting technical feature generation" in res.stdout
     assert "Technical Feature Generation Results" in res.stdout
     assert "SUCCESS" in res.stdout
+
+
+def test_builder_produces_every_model_feature() -> None:
+    """Every indicator the models look up must exist in the built feature set."""
+    from psx_predictor.models.split import DEFAULT_TECHNICAL_FEATURES
+
+    n = 260
+    prices = np.linspace(100.0, 130.0, n) + np.sin(np.arange(n))
+    df = pd.DataFrame(
+        {
+            "symbol": "OGDC",
+            "trade_date": pd.bdate_range("2025-01-01", periods=n).date,
+            "open": prices,
+            "high": prices + 1.0,
+            "low": prices - 1.0,
+            "close": prices,
+            "adjusted_close": prices,
+            "volume": np.full(n, 1_000_000.0),
+        }
+    )
+    feats = compute_all_technical_features(df)
+
+    missing = [c for c in DEFAULT_TECHNICAL_FEATURES if c not in feats.columns]
+    assert missing == []
+    assert feats[DEFAULT_TECHNICAL_FEATURES].iloc[-1].notna().all()

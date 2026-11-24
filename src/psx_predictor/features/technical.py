@@ -25,7 +25,7 @@ def compute_log_returns(
         ratio = series / shifted
         # Replace non-positive ratios with NaN before log
         valid_ratio = ratio.where(ratio > 0, np.nan)
-        results[f"return_{w}d"] = np.log(valid_ratio)
+        results[f"log_ret_{w}d"] = np.log(valid_ratio)
     return results
 
 
@@ -50,11 +50,13 @@ def compute_moving_averages(
         sma = series.rolling(window=w, min_periods=w).mean()
         results[f"sma_{w}"] = sma
         # Normalized distance: (Price - SMA) / SMA
-        results[f"dist_sma_{w}"] = (series - sma) / sma
+        results[f"price_to_sma_{w}"] = (series - sma) / sma
 
     for span in ema_windows:
         ema = series.ewm(span=span, adjust=False).mean()
         results[f"ema_{span}"] = ema
+        # Normalized distance: (Price - EMA) / EMA
+        results[f"price_to_ema_{span}"] = (series - ema) / ema.replace(0.0, np.nan)
 
     return results
 
@@ -170,7 +172,7 @@ def compute_atr(
         window: Smoothing period (default: 14).
 
     Returns:
-        Dictionary with 'atr_14' and 'atr_percent_14'.
+        Dictionary with 'atr_14' and 'atr_pct_14'.
     """
     prev_close = close.shift(1)
     tr1 = high - low
@@ -183,7 +185,7 @@ def compute_atr(
 
     return {
         f"atr_{window}": atr,
-        f"atr_percent_{window}": atr_pct,
+        f"atr_pct_{window}": atr_pct,
     }
 
 
@@ -200,7 +202,7 @@ def compute_bollinger_bands(
         num_std: Multiplier for standard deviation (default: 2.0).
 
     Returns:
-        Dictionary with 'bb_upper', 'bb_middle', 'bb_lower', 'bb_bandwidth', 'bb_percent_b'.
+        Dictionary with 'bb_upper', 'bb_middle', 'bb_lower', 'bb_bandwidth', 'bb_pct_b'.
     """
     middle = series.rolling(window=window, min_periods=window).mean()
     rolling_std = series.rolling(window=window, min_periods=window).std()
@@ -215,7 +217,7 @@ def compute_bollinger_bands(
         "bb_upper": upper,
         "bb_lower": lower,
         "bb_bandwidth": bandwidth,
-        "bb_percent_b": percent_b,
+        "bb_pct_b": percent_b,
     }
 
 
@@ -232,7 +234,7 @@ def compute_volume_dynamics(
         window: Relative volume smoothing window (default: 20).
 
     Returns:
-        Dictionary with 'volume_relative_20', 'obv', 'volume_roc_5'.
+        Dictionary with 'rel_volume_20', 'obv', 'volume_roc_5'.
     """
     vol_sma = volume.rolling(window=window, min_periods=window).mean()
     vol_relative = volume / vol_sma.replace(0.0, np.nan)
@@ -246,7 +248,7 @@ def compute_volume_dynamics(
     vol_roc_5 = ((volume - vol_shift5) / vol_shift5.replace(0.0, np.nan)) * 100.0
 
     return {
-        f"volume_relative_{window}": vol_relative,
+        f"rel_volume_{window}": vol_relative,
         "obv": obv,
         "volume_roc_5": vol_roc_5,
     }
@@ -297,7 +299,7 @@ def compute_all_technical_features(df: pd.DataFrame) -> pd.DataFrame:
     feature_dict["roc_10"] = compute_rate_of_change(adj_price, window=10)
 
     # 4. Volatility
-    r_1d = returns.get("return_1d", pd.Series(np.nan, index=work_df.index))
+    r_1d = returns.get("log_ret_1d", pd.Series(np.nan, index=work_df.index))
     feature_dict["volatility_20d"] = compute_volatility(r_1d, window=20)
     feature_dict.update(compute_atr(high, low, unadj_close, window=14))
     feature_dict.update(compute_bollinger_bands(adj_price, window=20, num_std=2.0))
