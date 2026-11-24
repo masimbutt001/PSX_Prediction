@@ -17,10 +17,18 @@ SCORE_HISTORY_COLUMNS = [
 ]
 
 
-def files_table(files: list[ResearchFile]) -> pd.DataFrame:
-    """One row per research file with headline scores and validation status."""
+def files_table(
+    files: list[ResearchFile],
+    video_keys: Optional[set[tuple[str, datetime.date]]] = None,
+) -> pd.DataFrame:
+    """One row per research file with headline scores, validation and video status."""
     rows = []
     for rf in files:
+        has_video = (
+            video_keys is not None
+            and rf.research_date is not None
+            and (rf.symbol, rf.research_date) in video_keys
+        )
         rep = rf.report
         rows.append(
             {
@@ -34,6 +42,7 @@ def files_table(files: list[ResearchFile]) -> pd.DataFrame:
                 "Valuation": rep.scores.valuation_score if rep else None,
                 "Confidence": rep.scores.confidence if rep else None,
                 "Status": "OK" if rf.is_valid else "INVALID",
+                "Video": "Yes" if has_video else "-",
                 "File": rf.path.name,
             }
         )

@@ -17,6 +17,7 @@ from psx_predictor.dashboard.theme import style_figure
 from psx_predictor.predictions.registry import PredictionRegistry
 from psx_predictor.research.features import research_context_for_date
 from psx_predictor.research.store import ResearchStore
+from psx_predictor.research.videos import find_research_video, list_research_videos
 
 page_header(
     "Stock research",
@@ -28,6 +29,8 @@ cfg = state.get_config()
 paths = state.get_paths()
 store = ResearchStore(research_dir=paths["root"] / "research")
 all_files = store.scan()
+all_videos = list_research_videos(store.research_dir)
+video_keys = {v.key for v in all_videos}
 
 if not all_files:
     st.info(
@@ -72,7 +75,7 @@ if not sym_files:
     st.stop()
 
 st.markdown(f"**{len(sym_files)} research file(s) for {symbol}**")
-st.dataframe(files_table(sym_files), width="stretch", hide_index=True)
+st.dataframe(files_table(sym_files, video_keys), width="stretch", hide_index=True)
 
 history = score_history(sym_files)
 if len(history) >= 2:
@@ -111,6 +114,33 @@ m[2].metric("Upside", f"{rec.upside_pct:.1f}%" if rec.upside_pct is not None els
 m[3].metric("Sentiment", f"{s.overall_sentiment:+.2f}" if s.overall_sentiment is not None else "-")
 m[4].metric("Risk", f"{s.risk_score:.0f}/100" if s.risk_score is not None else "-")
 m[5].metric("Confidence", f"{s.confidence:.0%}" if s.confidence is not None else "-")
+
+video = find_research_video(store.research_dir, rep.symbol, rep.research_date)
+if video is not None:
+    st.markdown("**Research video**")
+    details = [
+        x
+        for x in (
+            f"{video.duration_sec / 60:.1f} min" if video.duration_sec else None,
+            video.style,
+            video.language,
+            video.video_path.name,
+        )
+        if x
+    ]
+    st.caption(" · ".join(details))
+    try:
+        st.video(
+            str(video.video_path),
+            subtitles=str(video.subtitles_path) if video.subtitles_path else None,
+        )
+    except Exception as exc:  # a broken or locked file should not break the page
+        st.warning(f"Could not play {video.video_path.name}: {exc}")
+else:
+    st.caption(
+        "No video for this research yet. Run docs/research/antigravity_video_prompt.md in "
+        "Antigravity to make one."
+    )
 
 if rec.rationale:
     st.markdown(f"> {rec.rationale}")
