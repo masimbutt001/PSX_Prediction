@@ -1106,16 +1106,23 @@ def model_ablation(
 @app.command("backtest")
 def backtest_command(
     symbol: Annotated[
-        str,
+        Optional[str],
         typer.Option("--symbol", "-s", help="PSX ticker symbol to backtest (e.g. OGDC)"),
-    ],
+    ] = None,
     strategy: Annotated[
         str,
         typer.Option(
             "--strategy",
-            help="Trading strategy: 'sma_crossover', 'naive_persistence', or 'logistic'",
+            help=(
+                "Trading strategy: 'swing' (rule-based pullback swing trades), "
+                "'sma_crossover', 'naive_persistence', or 'logistic'"
+            ),
         ),
     ] = "sma_crossover",
+    all_symbols: Annotated[
+        bool,
+        typer.Option("--all", help="Swing strategy only: backtest every stock in the universe"),
+    ] = False,
     initial_cash: Annotated[
         float,
         typer.Option(
@@ -1141,6 +1148,13 @@ def backtest_command(
     """Simulate trading strategy with realistic PSX transaction frictions and circuit locks."""
     from psx_predictor.backtesting.metrics import display_backtest_report
     from psx_predictor.backtesting.runner import BacktestRunner
+
+    if strategy.strip().lower() == "swing":
+        _swing_backtest_cli(symbol, all_symbols, initial_cash, rf_rate)
+        return
+    if not symbol:
+        console.print("[bold red]--symbol is required for this strategy.[/bold red]")
+        raise typer.Exit(code=1)
 
     clean_sym = symbol.strip().upper()
     console.print(
@@ -1172,6 +1186,88 @@ def backtest_command(
             f"Buy-and-hold over the same sessions: [bold]{bench:+.1%}[/bold] "
             f"(strategy {sim_result.total_return:+.1%}, {verdict} buy-and-hold)"
         )
+
+
+def _swing_backtest_cli(
+    symbol: Optional[str], all_symbols: bool, initial_cash: float, rf_rate: float
+) -> None:
+    """Backtest the swing pullback strategy on processed prices and print a summary."""
+    from psx_predictor.backtesting.swing import (
+        blackout_windows_from_news,
+        market_uptrend,
+        run_swing_backtest,
+    )
+
+    cfg = load_config()
+    paths = get_storage_paths(cfg.settings.data_dir)
+    if all_symbols:
+        symbols = [s.symbol for s in cfg.stocks]
+    elif symbol:
+        symbols = [symbol.strip().upper()]
+    else:
+        console.print("[bold red]Pass --symbol SYMBOL or --all.[/bold red]")
+        raise typer.Exit(code=1)
+
+    def _read(path: Path) -> pd.DataFrame:
+        try:
+            return read_parquet(path) if path.exists() else pd.DataFrame()
+        except Exception:
+            return pd.DataFrame()
+
+    news = _read(paths["processed_news"] / "news_signals.parquet")
+    market = market_uptrend(_read(paths["processed_macro"] / "macro_daily.parquet"))
+    table = Table(
+        title="Swing pullback strategy vs buy and hold (after PSX costs)", box=box.ROUNDED
+    )
+    for col in (
+        "Stock",
+        "From",
+        "Trades",
+        "Win rate",
+        "Avg R",
+        "Return",
+        "Max DD",
+        "B&H return",
+        "B&H max DD",
+        "In market",
+    ):
+        table.add_column(col, justify="left" if col in ("Stock", "From") else "right")
+    notes: set[str] = set()
+    for sym in symbols:
+        prices = _read(paths["processed_prices"] / f"{sym}.parquet")
+        if prices.empty or "trade_date" not in prices.columns:
+            console.print(f"[yellow]{sym}: no processed prices, skipped.[/yellow]")
+            continue
+        try:
+            res = run_swing_backtest(
+                prices,
+                sym,
+                initial_cash=initial_cash,
+                blackout_windows=blackout_windows_from_news(news, sym),
+                market_filter=market,
+                risk_free_rate=rf_rate,
+            )
+        except ValueError as exc:
+            console.print(f"[yellow]{sym}: {exc}[/yellow]")
+            continue
+        s = res.summary()
+        table.add_row(
+            sym,
+            str(res.simulation.equity_curve["trade_date"].iloc[0]),
+            str(s["trades"]),
+            f"{s['win_rate']:.0%}",
+            f"{s['avg_r']:+.2f}",
+            f"{s['total_return']:+.1%}",
+            f"{s['max_drawdown']:.1%}",
+            f"{s['bh_return']:+.1%}",
+            f"{s['bh_max_drawdown']:.1%}",
+            f"{s['exposure']:.0%}",
+        )
+        for n in res.notes:
+            notes.add(f"{sym}: {n}" if "adjusted" in n or "still open" in n else n)
+    console.print(table)
+    for n in sorted(notes):
+        console.print(f"[dim]- {n}[/dim]")
 
 
 def _generate_prediction_cli(

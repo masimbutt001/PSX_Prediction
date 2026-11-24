@@ -32,7 +32,7 @@ def compute_log_returns(
 def compute_moving_averages(
     series: pd.Series,
     sma_windows: tuple[int, ...] = (5, 10, 20, 50, 200),
-    ema_windows: tuple[int, ...] = (12, 26),
+    ema_windows: tuple[int, ...] = (12, 20, 26, 50),
 ) -> dict[str, pd.Series]:
     """Compute Simple and Exponential Moving Averages and normalized price distances.
 
@@ -254,6 +254,281 @@ def compute_volume_dynamics(
     }
 
 
+def _true_range(high: pd.Series, low: pd.Series, close: pd.Series) -> pd.Series:
+    """True range: the largest of today's range and the gaps from yesterday's close."""
+    prev_close = close.shift(1)
+    return pd.concat([high - low, (high - prev_close).abs(), (low - prev_close).abs()], axis=1).max(
+        axis=1
+    )
+
+
+def _wilder(series: pd.Series, window: int) -> pd.Series:
+    """Wilder smoothing (an EMA with alpha = 1 / window)."""
+    return series.ewm(alpha=1.0 / window, min_periods=window, adjust=False).mean()
+
+
+def compute_adx(
+    high: pd.Series, low: pd.Series, close: pd.Series, window: int = 14
+) -> dict[str, pd.Series]:
+    """Average Directional Index with the +DI / -DI lines (Wilder).
+
+    ADX measures trend strength regardless of direction: above 25 is a trend,
+    below 20 is a choppy market.
+    """
+    up_move = high.diff()
+    down_move = -low.diff()
+    plus_dm = up_move.where((up_move > down_move) & (up_move > 0), 0.0)
+    minus_dm = down_move.where((down_move > up_move) & (down_move > 0), 0.0)
+
+    atr = _wilder(_true_range(high, low, close), window)
+    safe_atr = atr.replace(0.0, np.nan)
+    plus_di = (100.0 * _wilder(plus_dm, window) / safe_atr).fillna(0.0).where(atr.notna())
+    minus_di = (100.0 * _wilder(minus_dm, window) / safe_atr).fillna(0.0).where(atr.notna())
+    di_sum = plus_di + minus_di
+    dx = (100.0 * (plus_di - minus_di).abs() / di_sum.replace(0.0, np.nan)).fillna(0.0)
+    dx = dx.where(atr.notna())
+    adx = _wilder(dx, window)
+    return {
+        f"adx_{window}": adx,
+        f"plus_di_{window}": plus_di,
+        f"minus_di_{window}": minus_di,
+    }
+
+
+def compute_stochastic(
+    high: pd.Series,
+    low: pd.Series,
+    close: pd.Series,
+    window: int = 14,
+    smooth_k: int = 3,
+    smooth_d: int = 3,
+) -> dict[str, pd.Series]:
+    """Slow Stochastic oscillator (14, 3, 3): %K and its signal line %D, in [0, 100]."""
+    lowest = low.rolling(window=window, min_periods=window).min()
+    highest = high.rolling(window=window, min_periods=window).max()
+    rng = highest - lowest
+    raw_k = (100.0 * (close - lowest) / rng.replace(0.0, np.nan)).where(rng != 0.0, 50.0)
+    raw_k = raw_k.where(rng.notna())
+    k = raw_k.rolling(window=smooth_k, min_periods=smooth_k).mean()
+    d = k.rolling(window=smooth_d, min_periods=smooth_d).mean()
+    return {f"stoch_k_{window}": k, f"stoch_d_{window}": d}
+
+
+def compute_stoch_rsi(
+    series: pd.Series,
+    rsi_window: int = 14,
+    stoch_window: int = 14,
+    smooth_k: int = 3,
+    smooth_d: int = 3,
+) -> dict[str, pd.Series]:
+    """Stochastic RSI (14, 14, 3, 3): where RSI sits in its own recent range, in [0, 100]."""
+    rsi = compute_rsi(series, window=rsi_window)
+    lowest = rsi.rolling(window=stoch_window, min_periods=stoch_window).min()
+    highest = rsi.rolling(window=stoch_window, min_periods=stoch_window).max()
+    rng = highest - lowest
+    raw = (100.0 * (rsi - lowest) / rng.replace(0.0, np.nan)).where(rng != 0.0, 50.0)
+    raw = raw.where(rng.notna())
+    k = raw.rolling(window=smooth_k, min_periods=smooth_k).mean()
+    d = k.rolling(window=smooth_d, min_periods=smooth_d).mean()
+    return {f"stochrsi_k_{rsi_window}": k, f"stochrsi_d_{rsi_window}": d}
+
+
+def compute_ichimoku(
+    high: pd.Series,
+    low: pd.Series,
+    close: pd.Series,
+    tenkan: int = 9,
+    kijun: int = 26,
+    senkou_b: int = 52,
+    displacement: int = 26,
+) -> dict[str, pd.Series]:
+    """Ichimoku Cloud lines as they stand on each session, without look-ahead.
+
+    The cloud plotted over today was computed `displacement` sessions ago, so the
+    spans are shifted forward. The lagging span (Chikou) uses future prices when
+    aligned to today and is deliberately left out.
+    """
+
+    def midpoint(n: int) -> pd.Series:
+        hi = high.rolling(window=n, min_periods=n).max()
+        lo = low.rolling(window=n, min_periods=n).min()
+        return (hi + lo) / 2.0
+
+    tenkan_line = midpoint(tenkan)
+    kijun_line = midpoint(kijun)
+    span_a = ((tenkan_line + kijun_line) / 2.0).shift(displacement)
+    span_b = midpoint(senkou_b).shift(displacement)
+
+    cloud_top = pd.concat([span_a, span_b], axis=1).max(axis=1, skipna=False)
+    cloud_bottom = pd.concat([span_a, span_b], axis=1).min(axis=1, skipna=False)
+    safe_close = close.replace(0.0, np.nan)
+    # Signed distance from the cloud: positive above it, negative below, 0 inside.
+    above = (close - cloud_top).clip(lower=0.0)
+    below = (close - cloud_bottom).clip(upper=0.0)
+    price_to_cloud = (above + below) / safe_close
+
+    return {
+        f"tenkan_{tenkan}": tenkan_line,
+        f"kijun_{kijun}": kijun_line,
+        "senkou_a": span_a,
+        "senkou_b": span_b,
+        f"price_to_tenkan_{tenkan}": (close - tenkan_line) / tenkan_line.replace(0.0, np.nan),
+        f"price_to_kijun_{kijun}": (close - kijun_line) / kijun_line.replace(0.0, np.nan),
+        "tenkan_kijun_pct": (tenkan_line - kijun_line) / kijun_line.replace(0.0, np.nan),
+        "price_to_cloud": price_to_cloud,
+        "cloud_thickness_pct": (span_a - span_b) / safe_close,
+    }
+
+
+def compute_vwap(
+    high: pd.Series,
+    low: pd.Series,
+    close: pd.Series,
+    volume: pd.Series,
+    window: int = 20,
+    trade_dates: pd.Series | None = None,
+) -> dict[str, pd.Series]:
+    """Volume-weighted average price on daily bars.
+
+    - `vwap_20`: rolling 20-session VWAP of the typical price.
+    - `avwap_ytd`: VWAP anchored to the first session of each calendar year.
+    """
+    typical = (high + low + close) / 3.0
+    pv = typical * volume
+    vol_sum = volume.rolling(window=window, min_periods=window).sum()
+    vwap = pv.rolling(window=window, min_periods=window).sum() / vol_sum.replace(0.0, np.nan)
+    vwap = vwap.fillna(typical.rolling(window=window, min_periods=window).mean())
+
+    if trade_dates is not None:
+        years = pd.to_datetime(trade_dates).dt.year.to_numpy()
+    else:
+        years = np.zeros(len(close), dtype=int)
+    groups = pd.Series(years, index=close.index)
+    cum_pv = pv.groupby(groups).cumsum()
+    cum_vol = volume.groupby(groups).cumsum()
+    avwap = (cum_pv / cum_vol.replace(0.0, np.nan)).fillna(typical)
+
+    return {
+        f"vwap_{window}": vwap,
+        f"price_to_vwap_{window}": (close - vwap) / vwap.replace(0.0, np.nan),
+        "avwap_ytd": avwap,
+        "price_to_avwap_ytd": (close - avwap) / avwap.replace(0.0, np.nan),
+    }
+
+
+def compute_supertrend(
+    high: pd.Series,
+    low: pd.Series,
+    close: pd.Series,
+    window: int = 10,
+    multiplier: float = 3.0,
+) -> dict[str, pd.Series]:
+    """Supertrend (10, 3): an ATR band that flips with the trend; doubles as a trailing stop.
+
+    `supertrend_dir` is +1 in an uptrend (line below price) and -1 in a downtrend.
+    """
+    atr = _wilder(_true_range(high, low, close), window).to_numpy()
+    hl2 = ((high + low) / 2.0).to_numpy()
+    c = close.to_numpy(dtype=float)
+    n = len(c)
+    upper_basic = hl2 + multiplier * atr
+    lower_basic = hl2 - multiplier * atr
+
+    line = np.full(n, np.nan)
+    direction = np.full(n, np.nan)
+    final_upper = np.nan
+    final_lower = np.nan
+    cur_dir = 1.0
+    started = False
+    for i in range(n):
+        if np.isnan(atr[i]):
+            continue
+        if not started:
+            final_upper, final_lower = upper_basic[i], lower_basic[i]
+            cur_dir = 1.0 if c[i] >= hl2[i] else -1.0
+            started = True
+        else:
+            prev_close = c[i - 1]
+            if upper_basic[i] < final_upper or prev_close > final_upper:
+                final_upper = upper_basic[i]
+            if lower_basic[i] > final_lower or prev_close < final_lower:
+                final_lower = lower_basic[i]
+            if cur_dir > 0 and c[i] < final_lower:
+                cur_dir = -1.0
+            elif cur_dir < 0 and c[i] > final_upper:
+                cur_dir = 1.0
+        direction[i] = cur_dir
+        line[i] = final_lower if cur_dir > 0 else final_upper
+
+    st_line = pd.Series(line, index=close.index)
+    return {
+        f"supertrend_{window}_{int(multiplier)}": st_line,
+        "supertrend_dir": pd.Series(direction, index=close.index),
+        "price_to_supertrend": (close - st_line) / st_line.replace(0.0, np.nan),
+    }
+
+
+def compute_donchian(
+    high: pd.Series, low: pd.Series, close: pd.Series, window: int = 20
+) -> dict[str, pd.Series]:
+    """Donchian Channel (20): highest high and lowest low of the last `window` sessions.
+
+    `donchian_pos_20` is where the close sits in the channel (0 = at the low, 1 = at the high).
+    """
+    upper = high.rolling(window=window, min_periods=window).max()
+    lower = low.rolling(window=window, min_periods=window).min()
+    rng = upper - lower
+    pos = ((close - lower) / rng.replace(0.0, np.nan)).where(rng != 0.0, 0.5).where(rng.notna())
+    return {
+        f"donchian_upper_{window}": upper,
+        f"donchian_lower_{window}": lower,
+        f"donchian_mid_{window}": (upper + lower) / 2.0,
+        f"donchian_pos_{window}": pos,
+        f"donchian_width_pct_{window}": rng / close.replace(0.0, np.nan),
+    }
+
+
+def compute_mfi(
+    high: pd.Series,
+    low: pd.Series,
+    close: pd.Series,
+    volume: pd.Series,
+    window: int = 14,
+) -> pd.Series:
+    """Money Flow Index (14): a volume-weighted RSI, in [0, 100]."""
+    typical = (high + low + close) / 3.0
+    flow = typical * volume
+    change = typical.diff()
+    pos = flow.where(change > 0, 0.0)
+    neg = flow.where(change < 0, 0.0)
+    pos_sum = pos.rolling(window=window, min_periods=window).sum()
+    neg_sum = neg.rolling(window=window, min_periods=window).sum()
+    ratio = pos_sum / neg_sum.replace(0.0, np.nan)
+    mfi = 100.0 - 100.0 / (1.0 + ratio)
+    mfi = mfi.mask((neg_sum == 0.0) & (pos_sum > 0.0), 100.0)
+    mfi = mfi.mask((neg_sum == 0.0) & (pos_sum == 0.0), 50.0)
+    # The first diff is undefined, so the first full window starts one session later.
+    mfi.iloc[:window] = np.nan
+    return mfi.rename(f"mfi_{window}")
+
+
+def compute_cmf(
+    high: pd.Series,
+    low: pd.Series,
+    close: pd.Series,
+    volume: pd.Series,
+    window: int = 20,
+) -> pd.Series:
+    """Chaikin Money Flow (20), in [-1, 1]: positive when buyers are accumulating."""
+    rng = (high - low).replace(0.0, np.nan)
+    mf_mult = (((close - low) - (high - close)) / rng).fillna(0.0)
+    mf_vol = mf_mult * volume
+    vol_sum = volume.rolling(window=window, min_periods=window).sum()
+    cmf = mf_vol.rolling(window=window, min_periods=window).sum() / vol_sum.replace(0.0, np.nan)
+    cmf = cmf.fillna(0.0).where(vol_sum.notna())
+    return cmf.rename(f"cmf_{window}")
+
+
 def compute_all_technical_features(df: pd.DataFrame) -> pd.DataFrame:
     """Compute the full suite of technical indicators without look-ahead bias.
 
@@ -306,6 +581,27 @@ def compute_all_technical_features(df: pd.DataFrame) -> pd.DataFrame:
 
     # 5. Volume Dynamics
     feature_dict.update(compute_volume_dynamics(volume, adj_price, window=20))
+
+    # 6. Trend strength, oscillators, cloud, channels and money flow (on unadjusted OHLC,
+    #    like ATR, so highs, lows and closes are on the same scale)
+    feature_dict.update(compute_adx(high, low, unadj_close, window=14))
+    feature_dict.update(compute_stochastic(high, low, unadj_close, window=14))
+    feature_dict.update(compute_stoch_rsi(adj_price))
+    feature_dict.update(compute_ichimoku(high, low, unadj_close))
+    feature_dict.update(
+        compute_vwap(
+            high,
+            low,
+            unadj_close,
+            volume,
+            window=20,
+            trade_dates=work_df["trade_date"] if "trade_date" in work_df.columns else None,
+        )
+    )
+    feature_dict.update(compute_supertrend(high, low, unadj_close, window=10, multiplier=3.0))
+    feature_dict.update(compute_donchian(high, low, unadj_close, window=20))
+    feature_dict["mfi_14"] = compute_mfi(high, low, unadj_close, volume, window=14)
+    feature_dict["cmf_20"] = compute_cmf(high, low, unadj_close, volume, window=20)
 
     # Assemble final DataFrame
     features_df = pd.DataFrame(feature_dict, index=work_df.index)
