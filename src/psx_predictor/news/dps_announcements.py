@@ -41,6 +41,7 @@ class DPSAnnouncementsCollector:
     ANNOUNCEMENTS_URL = "https://dps.psx.com.pk/announcements"
     BASE_URL = "https://dps.psx.com.pk"
     DEFAULT_TIMEOUT = 15.0
+    DATE_ONLY_TIME = "11:59 PM"
 
     DEFAULT_HEADERS = {
         "User-Agent": (
@@ -133,6 +134,125 @@ class DPSAnnouncementsCollector:
 
         return announcements
 
+    def parse_company_page(self, html_text: str, symbol: str) -> list[RawAnnouncement]:
+        """Parse the Announcements tabs on a PSX Data Portal company page (/company/<SYMBOL>)."""
+        soup = BeautifulSoup(html_text, "html.parser")
+        sym = symbol.strip().upper()
+        name_tag = soup.find(class_="quote__name")
+        company_name = name_tag.get_text(strip=True) if isinstance(name_tag, Tag) else sym
+
+        section = soup.find(id="announcements")
+        if not isinstance(section, Tag):
+            return []
+
+        announcements: list[RawAnnouncement] = []
+        for panel in section.find_all("div", class_="tabs__panel"):
+            if not isinstance(panel, Tag):
+                continue
+            category = str(panel.get("data-name") or "Company Announcement").strip()
+            for row in panel.find_all("tr"):
+                if not isinstance(row, Tag):
+                    continue
+                cells = row.find_all("td")
+                if len(cells) < 2:
+                    continue
+                title = cells[1].get_text(" ", strip=True)
+                std_date = self._parse_date(cells[0].get_text(strip=True))
+                if not title or len(std_date) != 10:
+                    continue
+                doc_url: Optional[str] = None
+                for a_tag in row.find_all("a"):
+                    href = str(a_tag.get("href", ""))
+                    if "/download/document/" in href or href.endswith(".pdf"):
+                        doc_url = f"{self.BASE_URL}{href}" if href.startswith("/") else href
+                        break
+                announcements.append(
+                    RawAnnouncement(
+                        symbol=sym,
+                        company_name=company_name,
+                        title=title,
+                        category=category,
+                        announcement_date=std_date,
+                        # Company pages give no time. Treat the item as released after the
+                        # close so it only feeds the next session (no look-ahead).
+                        announcement_time=self.DATE_ONLY_TIME,
+                        document_url=doc_url,
+                        source="PSX DPS company page",
+                    )
+                )
+        return announcements
+
+    def fetch_company_announcements(
+        self, symbols: list[str], dry_run: bool = False
+    ) -> DPSAnnouncementsResult:
+        """Read announcements from each company's PSX Data Portal page, then dedupe and save.
+
+        Used when the announcements search endpoint refuses requests (it returns HTTP 403
+        to scripts), because company pages are plain HTML that still loads.
+        """
+        result = DPSAnnouncementsResult(symbol_filter=",".join(symbols) or None)
+        should_close = False
+        client = self._client
+        if client is None:
+            headers = {k: v for k, v in self.DEFAULT_HEADERS.items() if k != "X-Requested-With"}
+            client = httpx.Client(headers=headers, timeout=self.timeout, follow_redirects=True)
+            should_close = True
+
+        parsed: list[RawAnnouncement] = []
+        failures: list[str] = []
+        try:
+            for raw_sym in symbols:
+                sym = raw_sym.strip().upper()
+                try:
+                    resp = client.get(f"{self.BASE_URL}/company/{sym}")
+                    resp.raise_for_status()
+                    parsed.extend(self.parse_company_page(resp.text, sym))
+                except Exception as exc:
+                    logger.warning(f"Could not read PSX company page for {sym}: {exc}")
+                    failures.append(sym)
+        finally:
+            if should_close:
+                client.close()
+
+        if symbols and len(failures) == len(symbols):
+            raise RuntimeError(f"PSX company pages unreachable for {', '.join(failures)}")
+        result.total_fetched = len(parsed)
+        self._store_new(parsed, result, dry_run)
+        return result
+
+    def _store_new(
+        self, parsed: list[RawAnnouncement], result: DPSAnnouncementsResult, dry_run: bool
+    ) -> None:
+        """Skip announcements already saved and atomically append the rest."""
+        existing_ids: set[str] = set()
+        if self.announcements_file.exists():
+            existing_df = read_parquet(self.announcements_file)
+            if not existing_df.empty and "announcement_id" in existing_df.columns:
+                existing_ids = set(existing_df["announcement_id"].dropna().astype(str))
+
+        new_items: list[RawAnnouncement] = []
+        for ann in parsed:
+            if ann.announcement_id in existing_ids:
+                result.duplicates_skipped += 1
+            else:
+                existing_ids.add(ann.announcement_id)
+                new_items.append(ann)
+                result.new_announcements_added += 1
+        result.announcements = new_items
+
+        if new_items and not dry_run:
+            new_df = pd.DataFrame([a.to_dict() for a in new_items])
+            if self.announcements_file.exists():
+                existing_df = read_parquet(self.announcements_file)
+                combined = pd.concat([existing_df, new_df], ignore_index=True)
+                combined = combined.drop_duplicates(subset=["announcement_id"], keep="last")
+            else:
+                combined = new_df
+            write_parquet_atomic(combined, self.announcements_file)
+            logger.info(
+                f"Atomically wrote {len(new_items)} new announcements to {self.announcements_file}"
+            )
+
     def fetch_announcements(
         self,
         symbol: Optional[str] = None,
@@ -181,10 +301,18 @@ class DPSAnnouncementsCollector:
             resp = client.post(self.ANNOUNCEMENTS_URL, data=payload)
             if resp.status_code != 200:
                 logger.warning(
-                    f"DPS announcements endpoint returned HTTP {resp.status_code}. "
-                    f"Response text: {resp.text[:150]}"
+                    f"DPS announcements endpoint returned HTTP {resp.status_code}; "
+                    "reading company pages instead."
                 )
-                return result
+                fallback_symbols = (
+                    [clean_sym]
+                    if clean_sym
+                    else [s.symbol for s in load_config().get_enabled_stocks()]
+                )
+                if should_close:
+                    client.close()
+                    should_close = False
+                return self.fetch_company_announcements(fallback_symbols, dry_run=dry_run)
 
             parsed_list = self.parse_html_table(resp.text)
             result.total_fetched = len(parsed_list)

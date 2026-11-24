@@ -31,6 +31,9 @@ from psx_predictor.storage.parquet_io import read_parquet
 from psx_predictor.storage.paths import ensure_directories
 
 RUN_DATE = datetime.date(2026, 11, 20)  # A Friday and a PSX trading day
+PSX_FIXTURES = Path(__file__).resolve().parents[1] / "fixtures" / "psx"
+COMPANY_HTML = (PSX_FIXTURES / "dps_company_ENGROH.html").read_text(encoding="utf-8")
+HOME_HTML = (PSX_FIXTURES / "dps_home_kse100.html").read_text(encoding="utf-8")
 
 RSS_XML = """<?xml version="1.0"?>
 <rss version="2.0"><channel><title>Markets</title>
@@ -117,6 +120,12 @@ def offline_network(monkeypatch: pytest.MonkeyPatch) -> Any:
         router.post(DPSAnnouncementsCollector.ANNOUNCEMENTS_URL).mock(
             return_value=httpx.Response(200, text=DPS_HTML)
         )
+        router.get(url__startswith=f"{DPSAnnouncementsCollector.BASE_URL}/company/").mock(
+            return_value=httpx.Response(200, text=COMPANY_HTML)
+        )
+        router.get(MarketMacroCollector.DPS_HOME_URL).mock(
+            return_value=httpx.Response(503, text="offline")
+        )
         yield router
 
 
@@ -162,6 +171,7 @@ def test_macro_update_never_invents_market_data(
 
     monkeypatch.setattr(yfinance, "Ticker", _FailingTicker)
     monkeypatch.setattr(DPSCollector, "fetch_raw", _failing_dps_fetch)
+    monkeypatch.setattr(MarketMacroCollector, "_kse100_from_dps_home", lambda self, s, e: [])
     storage = MacroStorage(storage_paths=ensure_directories(tmp_path / "data"))
 
     summary = storage.update(end_date=RUN_DATE)
@@ -302,7 +312,7 @@ def test_kse100_falls_back_to_psx_data_portal(monkeypatch: pytest.MonkeyPatch) -
 
 def test_news_step_survives_one_source_failing(tmp_path: Path, offline_network: Any) -> None:
     """PSX announcements dropping the connection must not lose the RSS news."""
-    offline_network.post(DPSAnnouncementsCollector.ANNOUNCEMENTS_URL).mock(
+    offline_network.get(url__startswith=f"{DPSAnnouncementsCollector.BASE_URL}/company/").mock(
         side_effect=httpx.RemoteProtocolError("Server disconnected without sending a response.")
     )
     runner = DailyPipelineRunner(data_dir=tmp_path / "data", retry_delay=0.01, max_retries=1)
@@ -327,6 +337,7 @@ def test_macro_step_passes_without_kse100(
     import yfinance
 
     monkeypatch.setattr(DPSCollector, "fetch_raw", _failing_dps_fetch)
+    monkeypatch.setattr(MarketMacroCollector, "_kse100_from_dps_home", lambda self, s, e: [])
     runner = DailyPipelineRunner(data_dir=tmp_path / "data")
 
     monkeypatch.setattr(yfinance, "Ticker", _NoKse100Ticker)
@@ -337,3 +348,72 @@ def test_macro_step_passes_without_kse100(
     monkeypatch.setattr(DailyPipelineRunner, "_execute_with_retry", lambda self, fn, **_: fn())
     with pytest.raises(RuntimeError, match="USD_PKR"):
         runner._step_update_macro(dry_run=False)
+
+
+def test_kse100_read_from_psx_home_page(monkeypatch: pytest.MonkeyPatch) -> None:
+    """With Yahoo and the PSX JSON feed both empty, the home page gives the last close."""
+    import yfinance
+
+    monkeypatch.setattr(yfinance, "Ticker", _NoKse100Ticker)
+    monkeypatch.setattr(DPSCollector, "fetch_raw", _failing_dps_fetch)
+    with respx.mock() as router:
+        router.get(MarketMacroCollector.DPS_HOME_URL).mock(
+            return_value=httpx.Response(200, text=HOME_HTML)
+        )
+        points = MarketMacroCollector().fetch_kse100(
+            datetime.date(2026, 11, 1), datetime.date(2026, 11, 24)
+        )
+
+    # Saved before the open on Tue 24 Nov: only Monday's close is known.
+    assert [(p.observation_date, p.value) for p in points] == [("2026-11-23", 177473.85)]
+
+
+def test_psx_home_page_close_counts_after_the_session() -> None:
+    """After the day has traded and the market has closed, the current value is that day's close."""
+    from psx_predictor.macro.market_collector import parse_dps_home_kse100
+
+    after_close = HOME_HTML.replace(
+        '<div class="stats_label">Volume</div><div class="stats_value">0</div>',
+        '<div class="stats_label">Volume</div><div class="stats_value">312,450,000</div>',
+    ).replace("<div>Ready</div>", "<div>Closed</div>")
+    days = [p.observation_date for p in parse_dps_home_kse100(after_close)]
+    assert days == ["2026-11-23", "2026-11-24"]
+
+    while_open = after_close.replace("<div>Closed</div>", "<div>Open</div>")
+    assert [p.observation_date for p in parse_dps_home_kse100(while_open)] == ["2026-11-23"]
+
+
+def test_company_page_announcements(tmp_path: Path) -> None:
+    """Announcements come from the company page tabs, dated after the close and saved once."""
+    collector = DPSAnnouncementsCollector(storage_paths=ensure_directories(tmp_path / "data"))
+    with respx.mock() as router:
+        route = router.get(f"{DPSAnnouncementsCollector.BASE_URL}/company/ENGROH").mock(
+            return_value=httpx.Response(200, text=COMPANY_HTML)
+        )
+        first = collector.fetch_company_announcements(["ENGROH"])
+        second = collector.fetch_company_announcements(["ENGROH"])
+
+    assert route.call_count == 2
+    assert first.new_announcements_added == first.total_fetched > 0
+    assert second.new_announcements_added == 0
+    anns = first.announcements
+    assert {a.category for a in anns} == {"Financial Results", "Board Meetings", "Others"}
+    assert all(a.symbol == "ENGROH" and a.company_name == "Engro Holdings Limited" for a in anns)
+    assert all(a.announcement_time == DPSAnnouncementsCollector.DATE_ONLY_TIME for a in anns)
+    board = next(a for a in anns if a.announcement_date == "2026-11-16")
+    assert board.title.startswith("BOARD MEETING")
+    assert board.document_url == "https://dps.psx.com.pk/download/document/289290.pdf"
+
+
+def test_announcements_search_403_falls_back_to_company_pages(tmp_path: Path) -> None:
+    collector = DPSAnnouncementsCollector(storage_paths=ensure_directories(tmp_path / "data"))
+    with respx.mock() as router:
+        router.post(DPSAnnouncementsCollector.ANNOUNCEMENTS_URL).mock(
+            return_value=httpx.Response(403, text="Forbidden")
+        )
+        router.get(f"{DPSAnnouncementsCollector.BASE_URL}/company/ENGROH").mock(
+            return_value=httpx.Response(200, text=COMPANY_HTML)
+        )
+        res = collector.fetch_announcements(symbol="ENGROH")
+
+    assert res.new_announcements_added > 0

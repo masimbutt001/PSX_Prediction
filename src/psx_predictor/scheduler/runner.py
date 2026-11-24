@@ -156,6 +156,7 @@ class DailyPipelineRunner:
         from psx_predictor.news.processor import NewsNLPProcessor
         from psx_predictor.news.rss_collector import RSSNewsCollector
 
+        symbols = self._target_symbols or [s.symbol for s in self.config.get_enabled_stocks()]
         rss_col = RSSNewsCollector(storage_paths=self.paths)
         dps_col = DPSAnnouncementsCollector(storage_paths=self.paths)
         processor = NewsNLPProcessor(storage_paths=self.paths)
@@ -174,7 +175,9 @@ class DailyPipelineRunner:
             errors.append(f"RSS news: {exc}")
         try:
             dps_res = self._execute_with_retry(
-                lambda: dps_col.fetch_announcements(count=50, dry_run=False),
+                # The announcements search endpoint refuses scripts (HTTP 403), so read
+                # each tracked company's PSX page, which is plain HTML.
+                lambda: dps_col.fetch_company_announcements(symbols, dry_run=False),
                 step_name="collect_news_dps",
             )
             parts.append(f"{dps_res.new_announcements_added} DPS")

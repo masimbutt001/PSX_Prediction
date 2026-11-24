@@ -1,13 +1,86 @@
 """Collector for market-traded macroeconomic indicators: USD/PKR, Brent crude, and KSE-100."""
 
 import datetime
+import re
 from typing import Optional
 
 import numpy as np
 import pandas as pd
+from bs4 import BeautifulSoup, Tag
 from loguru import logger
 
 from psx_predictor.macro.schemas import MacroDataPoint, MacroIndicatorType
+from psx_predictor.news.calendar import PSXMarketCalendar
+
+_REG_MARKET_STATE = re.compile(
+    r"markets__item__title[^>]*>\s*Regular\s*</div>.*?State</div>\s*<div>\s*([^<]+?)\s*<",
+    re.S,
+)
+
+
+def _number(text: str) -> Optional[float]:
+    match = re.search(r"-?[\d,]+(?:\.\d+)?", text)
+    if not match:
+        return None
+    try:
+        return float(match.group(0).replace(",", ""))
+    except ValueError:
+        return None
+
+
+def parse_dps_home_kse100(
+    html_text: str, calendar: Optional[PSXMarketCalendar] = None
+) -> list[MacroDataPoint]:
+    """Parse KSE-100 closes from the PSX Data Portal home page.
+
+    The KSE-100 panel shows a snapshot time, the current value, the previous close and the
+    day's volume. The previous close always belongs to the trading day before the snapshot
+    day. The current value counts as that day's close only once the day has traded
+    (volume above zero) and the regular market is no longer open.
+    """
+    cal = calendar or PSXMarketCalendar()
+    soup = BeautifulSoup(html_text, "html.parser")
+    panel = soup.find(
+        lambda tag: tag.name == "div"
+        and tag.get("data-name") == MarketMacroCollector.KSE100_DPS_SYMBOL
+        and "marketIndices__details" in (tag.get("class") or [])
+    )
+    if not isinstance(panel, Tag):
+        return []
+
+    snapshot = str(panel.get("data-date") or "").strip()
+    try:
+        snapshot_day = datetime.date.fromisoformat(snapshot[:10])
+    except ValueError:
+        return []
+
+    stats: dict[str, Optional[float]] = {}
+    for item in panel.find_all("div", class_="stats_item"):
+        label = item.find("div", class_="stats_label")
+        value = item.find("div", class_="stats_value")
+        if isinstance(label, Tag) and isinstance(value, Tag):
+            stats[label.get_text(strip=True).lower()] = _number(value.get_text(" ", strip=True))
+
+    source = "PSX Data Portal home page (KSE100)"
+    points: list[MacroDataPoint] = []
+    prev_close = stats.get("previous close")
+    if prev_close and prev_close > 0:
+        prev_day = cal.previous_trading_day(snapshot_day)
+        points.append(
+            MarketMacroCollector._kse100_point(prev_day.isoformat(), prev_close, source)
+        )
+
+    current = _number(str(panel.get("data-close") or ""))
+    volume = stats.get("volume") or 0.0
+    state_match = _REG_MARKET_STATE.search(html_text)
+    state = state_match.group(1).strip().lower() if state_match else ""
+    market_open = state in {"open", "pre-open", "pre open"}
+    if current and current > 0 and volume > 0 and not market_open:
+        if cal.is_trading_day(snapshot_day):
+            points.append(
+                MarketMacroCollector._kse100_point(snapshot_day.isoformat(), current, source)
+            )
+    return points
 
 
 class MarketMacroCollector:
@@ -121,6 +194,11 @@ class MarketMacroCollector:
     KSE100_YAHOO_TICKERS = ("^KSE100", "^KSE")
     # Symbol of the KSE-100 index on the PSX Data Portal.
     KSE100_DPS_SYMBOL = "KSE100"
+    DPS_HOME_URL = "https://dps.psx.com.pk/"
+    BROWSER_USER_AGENT = (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+        "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+    )
 
     def fetch_kse100(
         self,
@@ -137,6 +215,10 @@ class MarketMacroCollector:
                 return points
 
         points = self._kse100_from_dps(start, end)
+        if points:
+            return points
+
+        points = self._kse100_from_dps_home(start, end)
         if points:
             return points
 
@@ -208,6 +290,33 @@ class MarketMacroCollector:
             )
             for day, close in zip(df["trade_date"], df["close"], strict=True)
             if pd.notna(close) and float(close) > 0
+        ]
+
+    def _kse100_from_dps_home(
+        self, start: datetime.date, end: datetime.date
+    ) -> list[MacroDataPoint]:
+        """Read the latest KSE-100 closes shown on the PSX Data Portal home page.
+
+        The page only shows the current day, so this builds history one run at a time.
+        """
+        try:
+            import httpx
+
+            resp = httpx.get(
+                self.DPS_HOME_URL,
+                headers={"User-Agent": self.BROWSER_USER_AGENT},
+                timeout=15.0,
+                follow_redirects=True,
+            )
+            resp.raise_for_status()
+            points = parse_dps_home_kse100(resp.text)
+        except Exception as e:
+            logger.warning(f"Could not read KSE-100 from the PSX Data Portal home page: {e}")
+            return []
+        return [
+            p
+            for p in points
+            if start <= datetime.date.fromisoformat(p.observation_date) <= end
         ]
 
     def fetch_all(
