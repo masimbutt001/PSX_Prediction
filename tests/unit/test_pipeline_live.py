@@ -246,6 +246,11 @@ def test_catch_up_decision(tmp_path: Path) -> None:
     assert runner.catch_up_decision(at(2026, 11, 23, 16, 0))[0] is True
     assert runner.catch_up_decision(at(2026, 11, 23, 21, 0))[0] is True
 
+    # A successful manual run before the close (08:45 PKT) can't have today's prices,
+    # so it must not block the after-close run
+    _log_run(log_file, "2026-11-23T03:45:00+00:00", success=True)
+    assert runner.catch_up_decision(at(2026, 11, 23, 16, 30))[0] is True
+
     # Dry runs don't count; a failed run is retried; a successful run stops further runs
     _log_run(log_file, "2026-11-23T11:05:00+00:00", success=True, dry_run=True)
     _log_run(log_file, "2026-11-23T11:05:00+00:00", success=False)
