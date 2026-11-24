@@ -1,107 +1,111 @@
-"""PSX Predictor Platform — Streamlit Interactive Research Dashboard Entrypoint."""
+"""PSX Predictor dashboard entry point: theme, top navigation and the shared header.
 
+Run with `uv run psx dashboard` from the repository root (so `.streamlit/config.toml`
+and `data/` are found).
+"""
+
+from pathlib import Path
+
+import pandas as pd
 import streamlit as st
 
 from psx_predictor import __version__
-from psx_predictor.config.loader import load_config
-from psx_predictor.predictions.registry import PredictionRegistry
-from psx_predictor.storage.paths import get_storage_paths
+from psx_predictor.dashboard import data, state
+from psx_predictor.dashboard.components.ui import status_pill
+from psx_predictor.dashboard.theme import inject_css
+
+PAGES_DIR = Path(__file__).parent / "views"
+ASSETS_DIR = Path(__file__).parent / "assets"
+STOCK_PAGE = str(PAGES_DIR / "stock.py")
+
+
+def build_pages() -> list["st.Page"]:
+    """Pages in navigation order."""
+    return [
+        st.Page(
+            str(PAGES_DIR / "overview.py"),
+            title="Overview",
+            icon=":material/space_dashboard:",
+            default=True,
+        ),
+        st.Page(STOCK_PAGE, title="Stocks", icon=":material/candlestick_chart:"),
+        st.Page(
+            str(PAGES_DIR / "performance.py"), title="Performance", icon=":material/query_stats:"
+        ),
+        st.Page(str(PAGES_DIR / "research.py"), title="Research", icon=":material/menu_book:"),
+        st.Page(str(PAGES_DIR / "pipeline.py"), title="Pipeline", icon=":material/sync:"),
+    ]
+
+
+def freshness_label(snap: pd.DataFrame) -> tuple[str, bool, bool]:
+    """(text, ok, warn) for the data-freshness pill in the header."""
+    if snap.empty or not snap["has_data"].any():
+        return "No price data yet · run psx bootstrap", False, False
+    newest = str(snap["last_date"].dropna().max())
+    stale = data.stale_symbols(snap)
+    try:
+        day = pd.Timestamp(newest).strftime("%a %d %b %Y")
+    except ValueError:
+        day = newest
+    if stale:
+        return f"Prices to {day} · {len(stale)} behind: {', '.join(stale)}", True, True
+    return f"Prices to {day} · all {len(snap)} up to date", True, False
+
+
+def _on_search() -> None:
+    choice = st.session_state.get("header_search")
+    if choice:
+        state.select_symbol(choice)
+        st.session_state["header_search"] = None
+        st.session_state["_goto_stock"] = True
+
+
+def render_header() -> None:
+    """Brand, quick stock search, data freshness and refresh, above every page."""
+    snap = state.snapshot()
+    c_search, c_status, c_btn = st.columns([3, 5.5, 1.1], vertical_alignment="center")
+    with c_search:
+        syms = state.symbols()
+        names = {s.symbol: s.name for s in state.get_config().stocks}
+        st.selectbox(
+            "Search stocks",
+            options=syms,
+            index=None,
+            placeholder="Search a stock…",
+            format_func=lambda s: f"{s} · {names.get(s, '')}",
+            label_visibility="collapsed",
+            key="header_search",
+            on_change=_on_search,
+        )
+        if st.session_state.pop("_goto_stock", False):
+            st.switch_page(STOCK_PAGE)
+    with c_status:
+        label, ok, warn = freshness_label(snap)
+        st.html(status_pill(label, ok=ok, warn=warn))
+    with c_btn:
+        if st.button(
+            "Refresh",
+            icon=":material/refresh:",
+            width="stretch",
+            help="Re-read the data files from disk",
+        ):
+            state.refresh()
+            st.rerun()
 
 
 def main() -> None:
-    """Main dashboard home page displaying platform diagnostics and overview."""
     st.set_page_config(
-        page_title="PSX Predictor Platform",
-        page_icon="📈",
+        page_title="PSX Predictor",
+        page_icon=":material/monitoring:",
         layout="wide",
-        initial_sidebar_state="expanded",
+        initial_sidebar_state="collapsed",
     )
-
-    st.title("📈 Pakistan Stock Exchange (PSX) Prediction Platform")
-    st.markdown(
-        """
-        Welcome to the **PSX Prediction & Quantitative Analytics Suite** — an institutional-grade,
-        multi-modal machine learning platform combining technical price action, automated news &
-        corporate disclosure sentiment, and retrospective macroeconomic state tracking.
-        """
-    )
-
-    cfg = load_config()
-    paths = get_storage_paths(cfg.settings.data_dir)
-    registry = PredictionRegistry(storage_paths=paths)
-
-    total_stocks = len(cfg.stocks)
-    enabled_stocks = len(cfg.get_enabled_stocks())
-
-    # Count stocks with price parquet files
-    stocks_with_data = sum(
-        1 for s in cfg.stocks if (paths["processed_prices"] / f"{s.symbol}.parquet").exists()
-    )
-
-    # Prediction registry records
-    pred_df = registry.get_predictions()
-    total_preds = len(pred_df) if not pred_df.empty else 0
-
-    st.markdown("### 🏛️ Platform Status & Universe Summary")
-    kpi1, kpi2, kpi3, kpi4 = st.columns(4)
-    with kpi1:
-        st.metric(label="Universe Size", value=f"{total_stocks} Stocks")
-    with kpi2:
-        st.metric(label="Active Tracking", value=f"{enabled_stocks} Stocks")
-    with kpi3:
-        st.metric(label="Data Ready", value=f"{stocks_with_data}/{total_stocks} Parquets")
-    with kpi4:
-        st.metric(label="Logged Predictions", value=f"{total_preds} Records")
-
-    st.divider()
-
-    st.markdown("### 🧭 Interactive Dashboard Modules")
-    nav1, nav2, nav3 = st.columns(3)
-
-    with nav1:
-        st.markdown(
-            """
-            #### 🌐 1. Market Overview
-            - Universal snapshot across all tracked PSX stocks.
-            - Real-time/historical closing prices and 1-day percentage change.
-            - Machine learning directional signals (**BUY**, **HOLD**, **SELL**) and confidence.
-            - Sector breakdown and signal distribution.
-            """
-        )
-
-    with nav2:
-        st.markdown(
-            """
-            #### 📈 2. Stock Analysis
-            - Interactive multi-panel Plotly candlestick charts with volume bars.
-            - Dynamic overlays: SMA 20, SMA 50, and Bollinger Bands.
-            - Forward-looking prediction card with calibrated probability.
-            - Explainable AI feature driver importance breakdown.
-            """
-        )
-
-    with nav3:
-        st.markdown(
-            """
-            #### 🧪 3. Model Performance
-            - Interactive strategy backtesting engine with realistic PSX transaction costs.
-            - Strategy evaluation: Moving Average Crossover, Momentum, Buy & Hold.
-            - Comparative equity curves and underwater drawdown visualizers.
-            - Quantitative metrics: Sharpe ratio, CAGR, max drawdown, win rate.
-            """
-        )
-
-    st.divider()
-
-    footer_text = f"PSX Predictor Platform v{__version__} | FastAPI, Streamlit, and XGBoost"
-    st.markdown(
-        f"""
-        <div style="text-align: center; color: #64748b; font-size: 0.85rem; padding: 10px;">
-            {footer_text}
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
+    st.logo(str(ASSETS_DIR / "logo.svg"), icon_image=str(ASSETS_DIR / "icon.svg"), size="large")
+    inject_css()
+    nav = st.navigation(build_pages(), position="top")
+    render_header()
+    nav.run()
+    st.caption(f"PSX Predictor v{__version__} · runs locally on your computer")
 
 
 if __name__ == "__main__":

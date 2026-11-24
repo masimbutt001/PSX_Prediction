@@ -1,0 +1,44 @@
+# Streamlit theme for the PSX Predictor dashboard.
+# Streamlit reads this file from the folder you start the app in, so run
+# `uv run psx dashboard` from the repository root.
+# Switch between light and dark from the app menu: ⋮ > Settings > Theme.
+
+[server]
+runOnSave = false
+
+[client]
+toolbarMode = "minimal"
+
+[theme]
+font = "Inter:https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap, sans-serif"
+codeFont = "'JetBrains Mono':https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap, monospace"
+baseRadius = "10px"
+buttonRadius = "10px"
+showWidgetBorder = true
+baseFontSize = 14
+
+[theme.dark]
+primaryColor = "#3b82f6"
+backgroundColor = "#0b0f17"
+secondaryBackgroundColor = "#121826"
+textColor = "#e6ebf5"
+borderColor = "#253048"
+dataframeBorderColor = "#253048"
+dataframeHeaderBackgroundColor = "#121826"
+linkColor = "#60a5fa"
+greenColor = "#34c77b"
+redColor = "#f26b6b"
+chartCategoricalColors = ["#3b82f6", "#f2b84b", "#a78bfa", "#34c77b", "#f26b6b", "#22d3ee", "#f472b6", "#97a3b9"]
+
+[theme.light]
+primaryColor = "#2563eb"
+backgroundColor = "#f4f6fa"
+secondaryBackgroundColor = "#ffffff"
+textColor = "#0f172a"
+borderColor = "#dde3ec"
+dataframeBorderColor = "#dde3ec"
+dataframeHeaderBackgroundColor = "#eef1f6"
+linkColor = "#1d4ed8"
+greenColor = "#0f7a43"
+redColor = "#c0322f"
+chartCategoricalColors = ["#2563eb", "#b7791f", "#7c3aed", "#0f7a43", "#c0322f", "#0891b2", "#db2777", "#556072"]
