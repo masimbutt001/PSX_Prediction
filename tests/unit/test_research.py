@@ -261,3 +261,57 @@ class TestCli:
         (rdir / "PPL_2026-11-20.json").write_text("[]", encoding="utf-8")
         res = runner.invoke(app, ["research", "validate"])
         assert res.exit_code == 1
+
+
+class TestResearchVideos:
+    def test_list_and_find_videos(self, tmp_path: Path, sample: dict[str, Any]) -> None:
+        from psx_predictor.research.videos import find_research_video, list_research_videos
+
+        rdir = tmp_path / "research"
+        vdir = rdir / "videos"
+        vdir.mkdir(parents=True)
+        (vdir / "OGDC_2026-11-20.mp4").write_bytes(b"\x00")
+        (vdir / "OGDC_2026-11-20.srt").write_text("1\n00:00:00,000 --> 00:00:01,000\nHi\n")
+        (vdir / "PPL_2026-11-21.mp4").write_bytes(b"\x00")
+        (vdir / "notes.mp4").write_bytes(b"\x00")
+        (vdir / "index.json").write_text(
+            json.dumps(
+                [
+                    {
+                        "symbol": "OGDC",
+                        "research_date": "2026-11-20",
+                        "video": "OGDC_2026-11-20.mp4",
+                        "subtitles": "OGDC_2026-11-20.srt",
+                        "duration_sec": 214.0,
+                        "style": "Broker research note",
+                        "language": "English",
+                    },
+                    {"video": "GONE_2026-01-01.mp4"},
+                ]
+            ),
+            encoding="utf-8",
+        )
+
+        videos = list_research_videos(rdir)
+        assert [v.symbol for v in videos] == ["PPL", "OGDC"]
+        ogdc = find_research_video(rdir, "ogdc", datetime.date(2026, 11, 20))
+        assert ogdc is not None
+        assert ogdc.duration_sec == 214.0 and ogdc.style == "Broker research note"
+        assert ogdc.subtitles_path is not None
+        ppl = find_research_video(rdir, "PPL", datetime.date(2026, 11, 21))
+        assert ppl is not None and ppl.subtitles_path is None and ppl.duration_sec is None
+        assert find_research_video(rdir, "OGDC", datetime.date(2026, 11, 22)) is None
+
+        _write(rdir, sample)
+        table = files_table(ResearchStore(research_dir=rdir).scan(), {v.key for v in videos})
+        assert table.loc[0, "Video"] == "Yes"
+
+    def test_bad_index_and_missing_folder(self, tmp_path: Path) -> None:
+        from psx_predictor.research.videos import list_research_videos
+
+        assert list_research_videos(tmp_path / "research") == []
+        vdir = tmp_path / "research" / "videos"
+        vdir.mkdir(parents=True)
+        (vdir / "OGDC_2026-11-20.mp4").write_bytes(b"\x00")
+        (vdir / "index.json").write_text("{broken", encoding="utf-8")
+        assert len(list_research_videos(tmp_path / "research")) == 1
