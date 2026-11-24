@@ -52,8 +52,11 @@ def test_scs_parse_ms_date():
     """Verify parsing of Microsoft JSON date strings."""
     parsed = SCSTradeCollector.parse_ms_date("/Date(1705258800000)/")
     assert isinstance(parsed, datetime.date)
-    assert parsed.year == 2024
-    assert parsed.month == 1
+    # 1705258800000 is 2024-01-14 19:00 UTC, i.e. midnight PKT on Monday 2024-01-15.
+    assert parsed == datetime.date(2024, 1, 15)
+
+    # The live 23 Nov 2026 (Monday) session must not come back as Sunday 22 Nov.
+    assert SCSTradeCollector.parse_ms_date("/Date(1795374000000)/") == datetime.date(2026, 11, 23)
 
     # Test ISO format fallback
     fallback = SCSTradeCollector.parse_ms_date("2024-05-15")

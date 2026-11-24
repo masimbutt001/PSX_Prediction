@@ -150,6 +150,20 @@ def create_candlestick_chart(
     return fig
 
 
+_EQUITY_VALUE_COLUMNS = ("portfolio_value", "total_equity", "equity")
+
+
+def _equity_value_column(df: pd.DataFrame) -> str:
+    """Name of the portfolio value column (BacktestSimulator writes 'total_equity')."""
+    for col in _EQUITY_VALUE_COLUMNS:
+        if col in df.columns:
+            return col
+    raise KeyError(
+        f"Equity curve has none of the expected value columns {_EQUITY_VALUE_COLUMNS}; "
+        f"found {list(df.columns)}"
+    )
+
+
 def create_equity_curve_chart(
     equity_df: pd.DataFrame,
     symbol: str,
@@ -163,7 +177,7 @@ def create_equity_curve_chart(
         return fig
 
     d_col = "date" if "date" in equity_df.columns else "trade_date"
-    val_col = "portfolio_value" if "portfolio_value" in equity_df.columns else "equity"
+    val_col = _equity_value_column(equity_df)
 
     fig.add_trace(
         go.Scatter(
@@ -177,7 +191,7 @@ def create_equity_curve_chart(
 
     if benchmark_df is not None and not benchmark_df.empty:
         b_d_col = "date" if "date" in benchmark_df.columns else "trade_date"
-        b_val_col = "portfolio_value" if "portfolio_value" in benchmark_df.columns else "equity"
+        b_val_col = _equity_value_column(benchmark_df)
         fig.add_trace(
             go.Scatter(
                 x=benchmark_df[b_d_col],

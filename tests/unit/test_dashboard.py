@@ -100,6 +100,37 @@ def test_equity_curve_chart_generation(sample_ohlcv_data: pd.DataFrame) -> None:
     assert fig.data[1].name == "Buy & Hold Benchmark"
 
 
+def test_equity_curve_chart_from_real_simulation(sample_ohlcv_data: pd.DataFrame) -> None:
+    """The Model Performance page feeds BacktestSimulator output (a 'total_equity' column)
+    straight into the chart; this used to raise KeyError: 'equity'."""
+    from psx_predictor.backtesting.simulator import BacktestSimulator, TransactionCostModel
+
+    def run(signals: np.ndarray, name: str) -> pd.DataFrame:
+        sim = BacktestSimulator(initial_cash=1_000_000.0, cost_model=TransactionCostModel())
+        return sim.simulate(
+            df=sample_ohlcv_data, signals=signals, symbol="OGDC", strategy_name=name
+        ).equity_curve
+
+    n = len(sample_ohlcv_data)
+    strategy = run(np.where(np.arange(n) % 10 < 5, 1.0, 0.0), "Toggle")
+    benchmark = run(np.ones(n, dtype=float), "Buy & Hold Benchmark")
+
+    fig = create_equity_curve_chart(equity_df=strategy, symbol="OGDC", benchmark_df=benchmark)
+    assert len(fig.data) == 2
+    assert list(fig.data[0].y) == strategy["total_equity"].tolist()
+    assert list(fig.data[1].y) == benchmark["total_equity"].tolist()
+
+    dd_fig = create_drawdown_chart(strategy["drawdown"], strategy["trade_date"])
+    assert len(dd_fig.data) == 1
+
+
+def test_equity_curve_chart_rejects_unknown_columns() -> None:
+    """A clear error names the expected columns instead of a bare KeyError."""
+    bad = pd.DataFrame({"date": ["2024-01-01"], "value": [1.0]})
+    with pytest.raises(KeyError, match="total_equity"):
+        create_equity_curve_chart(equity_df=bad, symbol="OGDC")
+
+
 def test_drawdown_chart_generation(sample_ohlcv_data: pd.DataFrame) -> None:
     """Test underwater drawdown area figure generation."""
     dates = sample_ohlcv_data["trade_date"]
