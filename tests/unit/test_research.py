@@ -315,3 +315,24 @@ class TestResearchVideos:
         (vdir / "OGDC_2026-11-20.mp4").write_bytes(b"\x00")
         (vdir / "index.json").write_text("{broken", encoding="utf-8")
         assert len(list_research_videos(tmp_path / "research")) == 1
+
+
+class TestVideoBrief:
+    def test_video_brief_parsed_and_optional(self, sample: dict[str, Any]) -> None:
+        report, errors, warnings = validate_research_data(sample)
+        assert report is not None and errors == []
+        assert report.video_brief is not None
+        assert report.video_brief.tone == "BALANCED"
+        assert report.video_brief.pronunciations[0].say == "O G D C"
+
+        older = copy.deepcopy(sample)
+        del older["video_brief"]
+        report, errors, warnings = validate_research_data(older)
+        assert report is not None and report.video_brief is None
+        assert not any("Missing keys" in w for w in warnings)
+
+    def test_bad_tone_rejected(self, sample: dict[str, Any]) -> None:
+        bad = copy.deepcopy(sample)
+        bad["video_brief"]["tone"] = "EXCITED"
+        report, errors, _ = validate_research_data(bad)
+        assert report is None and any("tone" in e for e in errors)

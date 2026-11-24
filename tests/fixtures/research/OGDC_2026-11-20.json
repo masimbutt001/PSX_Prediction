@@ -59,7 +59,9 @@
     "book_value_per_share_pkr": 280.0,
     "debt_to_equity": 0.0,
     "current_ratio": 4.0,
-    "source_ids": ["S1"]
+    "source_ids": [
+      "S1"
+    ]
   },
   "earnings": [
     {
@@ -71,7 +73,9 @@
       "eps_pkr": 9.3,
       "eps_yoy_pct": 3.0,
       "vs_expectation": "INLINE",
-      "source_ids": ["S1"]
+      "source_ids": [
+        "S1"
+      ]
     }
   ],
   "dividends": {
@@ -86,7 +90,9 @@
         "bonus_or_right_pct": null,
         "announcement_date": "2026-10-28",
         "book_closure_start": "2026-11-10",
-        "source_ids": ["S1"]
+        "source_ids": [
+          "S1"
+        ]
       }
     ]
   },
@@ -97,7 +103,9 @@
       "event_type": "POLICY_RATE",
       "description": "SBP monetary policy decision",
       "expected_impact": "UNCERTAIN",
-      "source_ids": ["S2"]
+      "source_ids": [
+        "S2"
+      ]
     }
   ],
   "catalysts": [
@@ -108,7 +116,9 @@
       "impact": "HIGH",
       "probability": 0.4,
       "timeframe": "MEDIUM",
-      "source_ids": ["S2"]
+      "source_ids": [
+        "S2"
+      ]
     }
   ],
   "risks": [
@@ -118,7 +128,9 @@
       "severity": "MEDIUM",
       "likelihood": "MEDIUM",
       "description": "Lower Brent reduces realised prices.",
-      "source_ids": ["S2"]
+      "source_ids": [
+        "S2"
+      ]
     }
   ],
   "news": [
@@ -129,31 +141,96 @@
       "category": "PROJECT",
       "sentiment": 0.6,
       "importance": "MEDIUM",
-      "source_ids": ["S2"]
+      "source_ids": [
+        "S2"
+      ]
     }
   ],
   "sector_view": {
     "name": "Oil & Gas Exploration",
     "outlook": 0.2,
-    "key_drivers": ["Brent crude", "Circular debt"],
-    "peers": [{"symbol": "PPL", "pe_ratio": 5.0, "pb_ratio": 0.7, "dividend_yield_pct": 5.0, "note": null}],
-    "source_ids": ["S2"]
+    "key_drivers": [
+      "Brent crude",
+      "Circular debt"
+    ],
+    "peers": [
+      {
+        "symbol": "PPL",
+        "pe_ratio": 5.0,
+        "pb_ratio": 0.7,
+        "dividend_yield_pct": 5.0,
+        "note": null
+      }
+    ],
+    "source_ids": [
+      "S2"
+    ]
   },
   "management": {
     "ceo": null,
     "chairman": null,
-    "major_shareholders": [{"name": "Government of Pakistan", "stake_pct": 74.97}],
+    "major_shareholders": [
+      {
+        "name": "Government of Pakistan",
+        "stake_pct": 74.97
+      }
+    ],
     "recent_changes": [],
     "governance_notes": null,
     "source_ids": []
   },
   "analyst_views": [],
-  "market_sentiment": {"forum_sentiment": null, "institutional_flows_note": null, "notes": null},
-  "key_takeaways": ["Illustrative test fixture."],
-  "data_gaps": ["CEO name not verified."],
+  "market_sentiment": {
+    "forum_sentiment": null,
+    "institutional_flows_note": null,
+    "notes": null
+  },
+  "key_takeaways": [
+    "Illustrative test fixture."
+  ],
+  "video_brief": {
+    "hook": "OGDC trades at under seven times earnings while paying a six percent yield.",
+    "story": [
+      "Results were in line.",
+      "Circular debt is the swing factor."
+    ],
+    "tone": "BALANCED",
+    "chart_highlights": [
+      {
+        "chart": "VALUATION_VS_PEERS",
+        "highlight": "P/E 6.6 vs PPL 5.0"
+      }
+    ],
+    "pronunciations": [
+      {
+        "term": "OGDC",
+        "say": "O G D C"
+      }
+    ],
+    "closing_line": "Cheap, but the receivables story decides the next move."
+  },
+  "data_gaps": [
+    "CEO name not verified."
+  ],
   "notes": null,
   "sources": [
-    {"id": "S1", "title": "Financial results", "publisher": "PSX", "url": "https://dps.psx.com.pk/", "published_date": "2026-10-28", "accessed_date": "2026-11-20", "type": "PSX_FILING"},
-    {"id": "S2", "title": "News article", "publisher": "Business Recorder", "url": "https://www.brecorder.com/", "published_date": "2026-11-18", "accessed_date": "2026-11-20", "type": "NEWS"}
+    {
+      "id": "S1",
+      "title": "Financial results",
+      "publisher": "PSX",
+      "url": "https://dps.psx.com.pk/",
+      "published_date": "2026-10-28",
+      "accessed_date": "2026-11-20",
+      "type": "PSX_FILING"
+    },
+    {
+      "id": "S2",
+      "title": "News article",
+      "publisher": "Business Recorder",
+      "url": "https://www.brecorder.com/",
+      "published_date": "2026-11-18",
+      "accessed_date": "2026-11-20",
+      "type": "NEWS"
+    }
   ]
 }

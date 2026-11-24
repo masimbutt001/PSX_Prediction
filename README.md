@@ -340,7 +340,7 @@ uv run psx research validate             # schema check; exit code 1 if any file
 uv run psx research show --symbol OGDC   # latest research summary
 ```
 
-Narrated presentation videos (broker research note style) can be made from each report with
+Animated, narrated videos (broker research note style, natural voice) can be made from each report with
 [`docs/research/antigravity_video_prompt.md`](docs/research/antigravity_video_prompt.md). They are
 saved to `data/research/videos/` (also gitignored), with an `index.json` listing every video.
 
