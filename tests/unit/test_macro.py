@@ -229,3 +229,51 @@ def test_cli_macro_commands(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> 
     assert "Macroeconomic Storage" in res_status.stdout
     assert "Raw Macro" in res_status.stdout
     assert "Daily Macro" in res_status.stdout
+
+
+# ---------------------------------------------------------------------------
+# USD/PKR: Yahoo interleaves two price levels; keep the one the reference rate confirms
+# ---------------------------------------------------------------------------
+def _fx(day: str, value: float):
+    from psx_predictor.macro.schemas import MacroDataPoint
+
+    return MacroDataPoint(
+        indicator="USD_PKR",
+        observation_date=day,
+        public_release_date=day,
+        value=value,
+        unit="PKR",
+        frequency="DAILY",
+        source="Yahoo Finance (PKR=X)",
+    )
+
+
+def test_clean_fx_levels_drops_quotes_on_the_wrong_level() -> None:
+    from psx_predictor.macro.market_collector import clean_fx_levels
+
+    # Real Yahoo values from Nov 2026: the ~267-268 quotes are the glitch.
+    raw = [
+        ("2026-11-13", 276.30), ("2026-11-16", 268.47), ("2026-11-17", 267.56),
+        ("2026-11-18", 267.67), ("2026-11-19", 267.69), ("2026-11-20", 276.20),
+        ("2026-11-23", 267.12), ("2026-11-24", 276.35),
+    ]
+    kept = clean_fx_levels([_fx(d, v) for d, v in raw], anchor=276.55)
+    assert [p.observation_date for p in kept] == ["2026-11-13", "2026-11-20", "2026-11-24"]
+    assert all(abs(p.value - 276.3) < 0.2 for p in kept)
+
+
+def test_clean_fx_levels_keeps_a_real_lasting_move() -> None:
+    from psx_predictor.macro.market_collector import clean_fx_levels
+
+    # A devaluation from 230 to 262 that lasts is real, not a glitch.
+    days = [f"2023-01-{d:02d}" for d in range(2, 22)]
+    values = [230.0] * 10 + [262.0] * 10
+    kept = clean_fx_levels([_fx(d, v) for d, v in zip(days, values, strict=True)], anchor=262.5)
+    assert len(kept) == 20
+
+
+def test_clean_fx_levels_without_anchor_changes_nothing() -> None:
+    from psx_predictor.macro.market_collector import clean_fx_levels
+
+    pts = [_fx("2026-11-23", 267.12), _fx("2026-11-24", 276.35)]
+    assert clean_fx_levels(pts, anchor=None) == pts
