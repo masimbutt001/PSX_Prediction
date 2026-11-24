@@ -382,8 +382,13 @@ class DailyPipelineRunner:
         tz = ZoneInfo(self.config.settings.timezone)
         return datetime.datetime.now(tz).date()
 
-    def _runs_logged_on(self, day: datetime.date) -> list[dict[str, Any]]:
-        """Live (non dry-run) runs recorded in pipeline.log that started on `day` (market tz)."""
+    def _runs_logged_on(
+        self, day: datetime.date, not_before: Optional[datetime.time] = None
+    ) -> list[dict[str, Any]]:
+        """Live (non dry-run) runs recorded in pipeline.log that started on `day` (market tz).
+
+        With `not_before`, only runs that started at or after that local time count.
+        """
         if not self.log_file.exists():
             return []
         tz = ZoneInfo(self.config.settings.timezone)
@@ -396,6 +401,7 @@ class DailyPipelineRunner:
                 continue
             if (
                 started.date() == day
+                and (not_before is None or started.time() >= not_before)
                 and not entry.get("dry_run", False)
                 and not entry.get("partial", False)
             ):
@@ -421,7 +427,9 @@ class DailyPipelineRunner:
         start_at = eod_run_time(today)
         if local_now.time() < start_at:
             return False, f"Too early: today's run starts after {start_at.strftime('%H:%M')}."
-        runs = self._runs_logged_on(today)
+        # Only runs started after today's close count: a manual run in the morning cannot
+        # have today's prices, so it must not stop the after-close run.
+        runs = self._runs_logged_on(today, not_before=start_at)
         if any(r.get("success") for r in runs):
             return False, f"Already completed successfully on {today.isoformat()}."
         if len(runs) >= MAX_RUNS_PER_DAY:

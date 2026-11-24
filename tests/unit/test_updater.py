@@ -263,3 +263,49 @@ def test_cli_update_command(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> 
     assert res.exit_code == 0
     assert "Starting incremental update" in res.stdout
     assert "Incremental Daily Update Execution Results" in res.stdout
+
+
+def test_last_completed_session_waits_for_the_close() -> None:
+    """A session only counts once the after-close run time has passed in PKT."""
+    from zoneinfo import ZoneInfo
+
+    from psx_predictor.processing.updater import last_completed_session
+
+    pkt = ZoneInfo("Asia/Karachi")
+    tue = datetime.date(2026, 11, 24)
+    assert last_completed_session(tue, datetime.datetime(2026, 11, 24, 8, 45, tzinfo=pkt)) == (
+        datetime.date(2026, 11, 23)
+    )
+    assert last_completed_session(tue, datetime.datetime(2026, 11, 24, 16, 5, tzinfo=pkt)) == tue
+    # Monday morning: last session is the previous Friday
+    mon = datetime.date(2026, 11, 23)
+    assert last_completed_session(mon, datetime.datetime(2026, 11, 23, 9, 0, tzinfo=pkt)) == (
+        datetime.date(2026, 11, 20)
+    )
+    # A past end date on a Saturday maps back to Friday
+    assert last_completed_session(
+        datetime.date(2026, 11, 21), datetime.datetime(2026, 11, 24, 9, 0, tzinfo=pkt)
+    ) == datetime.date(2026, 11, 20)
+
+
+def test_pre_close_run_is_up_to_date_without_fetching(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Before today's close, a stock saved up to the last session needs no fetch."""
+    from zoneinfo import ZoneInfo
+
+    storage_paths = get_storage_paths(tmp_path)
+    dest_file = storage_paths["processed_prices"] / "OGDC.parquet"
+    dest_file.parent.mkdir(parents=True, exist_ok=True)
+    _generate_ohlcv_dataset("OGDC", [datetime.date(2026, 11, 23)]).to_parquet(dest_file)
+
+    mock_collector = MagicMock(spec=BaseCollector)
+    mock_collector.source_name = "mock_source"
+    morning = datetime.datetime(2026, 11, 24, 8, 45, tzinfo=ZoneInfo("Asia/Karachi"))
+    monkeypatch.setattr(IncrementalUpdater, "_now", staticmethod(lambda: morning))
+    updater = IncrementalUpdater(storage_paths=storage_paths, collector=mock_collector)
+
+    res = updater.update_symbol("OGDC", end_date=datetime.date(2026, 11, 24))
+
+    assert res.status == "ALREADY_UP_TO_DATE"
+    mock_collector.fetch_historical.assert_not_called()

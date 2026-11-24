@@ -6,6 +6,7 @@ import time
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, Optional
+from zoneinfo import ZoneInfo
 
 import pandas as pd
 from loguru import logger
@@ -13,6 +14,7 @@ from loguru import logger
 from psx_predictor.collectors.base import BaseCollector
 from psx_predictor.collectors.composite import CompositeCollector
 from psx_predictor.config.loader import load_config
+from psx_predictor.news.calendar import PSXMarketCalendar
 from psx_predictor.processing.pipeline import (
     DataBootstrapPipeline,
     compute_continuous_adjusted_close,
@@ -24,6 +26,32 @@ from psx_predictor.storage.parquet_io import (
 )
 from psx_predictor.storage.paths import ensure_directories, get_storage_paths
 from psx_predictor.storage.schemas import PriceDatasetValidator
+
+MARKET_TZ = ZoneInfo("Asia/Karachi")
+
+
+def last_completed_session(
+    end_date: datetime.date,
+    now: Optional[datetime.datetime] = None,
+    calendar: Optional[PSXMarketCalendar] = None,
+) -> datetime.date:
+    """Latest PSX trading day on or before `end_date` whose closing prices can exist.
+
+    Today only counts once the daily after-close run time has passed (16:00 PKT Mon-Thu,
+    17:00 PKT Fri). Weekends and PSX holidays never count.
+    """
+    from psx_predictor.scheduler.jobs import eod_run_time
+
+    cal = calendar or PSXMarketCalendar()
+    local_now = (now or datetime.datetime.now(MARKET_TZ)).astimezone(MARKET_TZ)
+    day = end_date
+    if day >= local_now.date():
+        day = local_now.date()
+        if not cal.is_trading_day(day) or local_now.time() < eod_run_time(day):
+            day = cal.previous_trading_day(day)
+    elif not cal.is_trading_day(day):
+        day = cal.previous_trading_day(day)
+    return day
 
 
 @dataclass
@@ -94,6 +122,11 @@ class IncrementalUpdater:
 
         ensure_directories(self.storage_paths["root"])
         self.collector = collector or CompositeCollector()
+
+    @staticmethod
+    def _now() -> datetime.datetime:
+        """Current time in PSX's timezone (patched in tests)."""
+        return datetime.datetime.now(MARKET_TZ)
 
     def get_latest_trade_date(self, symbol: str) -> Optional[datetime.date]:
         """Query the latest existing local trading date for a symbol.
@@ -213,8 +246,12 @@ class IncrementalUpdater:
         fetch_start = latest_date + datetime.timedelta(days=1)
         prev_latest_str = str(latest_date)
 
-        # 3. Check if already up-to-date
-        if fetch_start > resolved_end and not force:
+        # 3. Check if already up-to-date. No session newer than the saved one can exist yet
+        # before today's close, or on a weekend or holiday, so there is nothing to fetch.
+        if not force and (
+            fetch_start > resolved_end
+            or latest_date >= last_completed_session(resolved_end, now=self._now())
+        ):
             logger.info(f"[{clean_sym}] Already up to date (latest: {prev_latest_str})")
             return SymbolUpdateResult(
                 symbol=clean_sym,
