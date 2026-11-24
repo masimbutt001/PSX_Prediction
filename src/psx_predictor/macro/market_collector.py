@@ -83,6 +83,46 @@ def parse_dps_home_kse100(
     return points
 
 
+def clean_fx_levels(
+    points: list[MacroDataPoint],
+    anchor: Optional[float],
+    tolerance: float = 0.015,
+    persist: int = 8,
+) -> list[MacroDataPoint]:
+    """Drop USD/PKR points that sit on a second, wrong price level.
+
+    Yahoo's PKR=X feed interleaves two quotes about 3% apart (e.g. 267 and 276 on
+    alternate days), which shows up as fake 3% daily moves. Walking back from the newest
+    point, a value is kept when it is within `tolerance` of the last kept (newer) value.
+    A value further away is kept only when the next `persist` older values are all on
+    that new level too: a real devaluation or recovery persists, the feed glitch does not.
+
+    Args:
+        points: USD/PKR points in any order.
+        anchor: A trusted current rate (from an independent source) to start from. If
+            None, nothing is filtered, because there is no way to tell which level is right.
+    """
+    if anchor is None or anchor <= 0 or len(points) < 2:
+        return list(points)
+
+    ordered = sorted(points, key=lambda p: p.observation_date, reverse=True)
+    kept: list[MacroDataPoint] = []
+    ref = anchor
+    for i, point in enumerate(ordered):
+        if abs(point.value / ref - 1.0) <= tolerance:
+            kept.append(point)
+            ref = point.value
+            continue
+        older = ordered[i + 1 : i + 1 + persist]
+        if len(older) == persist and all(abs(p.value / ref - 1.0) > tolerance for p in older):
+            kept.append(point)
+            ref = point.value
+    dropped = len(ordered) - len(kept)
+    if dropped:
+        logger.info(f"USD/PKR: dropped {dropped} Yahoo quotes that were on the wrong level.")
+    return sorted(kept, key=lambda p: p.observation_date)
+
+
 class MarketMacroCollector:
     """Collects daily traded macro series: USD/PKR, Brent Crude Oil, and KSE-100 Index."""
 
@@ -137,11 +177,37 @@ class MarketMacroCollector:
         except Exception as e:
             logger.warning(f"Could not fetch USD/PKR from Yahoo Finance: {e}")
 
+        if points:
+            anchor = self.fetch_usd_pkr_reference()
+            if anchor is None:
+                logger.warning(
+                    "USD/PKR: no reference rate available; Yahoo quotes used unfiltered."
+                )
+            points = clean_fx_levels(points, anchor)
+
         if not points and self.fallback_on_error:
             logger.info("Generating deterministic fallback seed data for USD/PKR.")
             points = self._generate_usd_pkr_seed(start, end)
 
         return points
+
+    USD_PKR_REFERENCE_URL = "https://open.er-api.com/v6/latest/USD"
+
+    def fetch_usd_pkr_reference(self) -> Optional[float]:
+        """Today's USD/PKR mid rate from an independent free source (no API key).
+
+        Used only to tell which of Yahoo's two interleaved levels is the real one.
+        """
+        try:
+            import httpx
+
+            resp = httpx.get(self.USD_PKR_REFERENCE_URL, timeout=15.0)
+            resp.raise_for_status()
+            rate = float(resp.json()["rates"]["PKR"])
+            return rate if rate > 0 else None
+        except Exception as e:
+            logger.warning(f"Could not fetch USD/PKR reference rate: {e}")
+            return None
 
     def fetch_brent_crude(
         self,

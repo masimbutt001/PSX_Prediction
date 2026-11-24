@@ -97,6 +97,17 @@ class MacroStorage:
         new_df = pd.DataFrame([p.to_dict() for p in points])
         if self.raw_file.exists():
             existing = read_parquet(self.raw_file)
+            # USD/PKR quotes are filtered (see clean_fx_levels): a fresh fetch is the full
+            # truth for its date range, so saved quotes it rejected must not come back.
+            fx = MacroIndicatorType.USD_PKR.value
+            if not new_df.empty and fx in set(new_df["indicator"]):
+                new_fx_dates = new_df.loc[new_df["indicator"] == fx, "observation_date"]
+                stale = (
+                    (existing["indicator"] == fx)
+                    & (existing["observation_date"] >= new_fx_dates.min())
+                    & (existing["observation_date"] <= new_fx_dates.max())
+                )
+                existing = existing[~stale]
             combined = pd.concat([existing, new_df], ignore_index=True)
             combined = combined.drop_duplicates(
                 subset=["indicator", "observation_date", "public_release_date"], keep="last"
