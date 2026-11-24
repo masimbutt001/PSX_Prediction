@@ -721,6 +721,10 @@ def data_update(
         if manifest_file.exists():
             console.print(f"[bold green]Saved update manifest to:[/bold green] {manifest_file}")
 
+    if universe_result.failed_symbols and not dry_run:
+        # Non-zero exit so callers (scripts, the dashboard's Update button) see the failure.
+        raise typer.Exit(code=1)
+
 
 @features_app.command("build")
 def features_build(
@@ -2040,9 +2044,32 @@ def schedule_run_daily(
             ),
         ),
     ] = False,
+    step: Annotated[
+        Optional[list[str]],
+        typer.Option(
+            "--step",
+            help=(
+                "Run only this step (repeatable): update_prices, collect_news, update_macro, "
+                "build_features, generate_predictions, audit_predictions"
+            ),
+        ),
+    ] = None,
 ) -> None:
     """Execute the sequential 6-step End-of-Day (EOD) operational pipeline immediately."""
+    from psx_predictor.scheduler.jobs import DailyPipelineStep
     from psx_predictor.scheduler.runner import DailyPipelineRunner
+
+    only_steps: Optional[list[DailyPipelineStep]] = None
+    if step:
+        valid = {s.value for s in DailyPipelineStep}
+        bad = [s for s in step if s not in valid]
+        if bad:
+            console.print(
+                f"[bold red]Unknown step(s):[/bold red] {', '.join(bad)}. "
+                f"Choose from: {', '.join(sorted(valid))}"
+            )
+            raise typer.Exit(code=2)
+        only_steps = [DailyPipelineStep(s) for s in step]
 
     parsed_symbols = (
         [s.strip().upper() for s in symbols.split(",") if s.strip()]
@@ -2060,6 +2087,7 @@ def schedule_run_daily(
         continue_on_error=continue_on_error,
         symbols=parsed_symbols,
         skip_non_trading_days=skip_non_trading_days,
+        only_steps=only_steps,
     )
     if report is not None and not report.success:
         raise typer.Exit(code=1)

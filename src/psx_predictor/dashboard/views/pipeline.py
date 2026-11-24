@@ -4,6 +4,7 @@ import pandas as pd
 import streamlit as st
 
 from psx_predictor.dashboard import data, state
+from psx_predictor.dashboard.components.jobs_panel import run_button
 from psx_predictor.dashboard.components.ui import disclaimer, kpi_row, page_header, step_row
 from psx_predictor.dashboard.theme import palette
 
@@ -13,13 +14,14 @@ page_header("Pipeline health", "What the daily run did, what failed, and how fre
 runs = state.pipeline_runs(limit=30)
 live_runs = [r for r in runs if not r.get("dry_run")]
 last = data.latest_live_run(runs)
+base_run, step_tasks = data.latest_steps(runs)
 snap = state.snapshot()
 stale = data.stale_symbols(snap)
 macro = state.macro()
 preds = state.predictions()
 
-last_ok = next((r for r in live_runs if r.get("success")), None)
-failed_steps = [t for t in (last or {}).get("tasks", []) if t.get("status") == "FAILED"]
+last_ok = next((r for r in live_runs if r.get("success") and not r.get("partial")), None)
+failed_steps = [t for t in step_tasks if t.get("status") == "FAILED"]
 kpi_row(
     [
         (
@@ -63,40 +65,104 @@ st.write("")
 left, right = st.columns([1, 1.4], gap="large")
 with left:
     with st.container(border=True):
+        st.markdown("##### Run now")
+        r1, r2, r3 = st.columns(3)
+        with r1:
+            run_button(
+                "Run full pipeline",
+                "run_pipeline",
+                key="pl_run_all",
+                primary=True,
+                help="All 6 steps, continuing past a failed step",
+                width="stretch",
+            )
+        with r2:
+            run_button(
+                "Update all prices",
+                "update_prices",
+                key="pl_update_all",
+                icon=":material/download:",
+                width="stretch",
+            )
+        with r3:
+            run_button(
+                "Score predictions",
+                "audit_predictions",
+                key="pl_audit",
+                icon=":material/fact_check:",
+                help="Check past predictions against the closes now on file",
+                width="stretch",
+            )
+        st.caption(
+            "Jobs run in the background on this computer; progress shows at the top of the "
+            "page. The Windows scheduled task still runs "
+            "`uv run psx schedule run-daily --catch-up` every hour after the market closes."
+        )
+
+    with st.container(border=True):
         st.markdown("##### Latest run, step by step")
-        if not last:
+        if not base_run:
             st.caption("No daily run logged yet.")
         else:
             st.caption(
-                f"{data.format_pkt(last['started_at'])} · "
-                f"{float(last.get('duration_seconds', 0)):.0f}s"
-            )
-            st.html(
-                "".join(
-                    step_row(
-                        data.STEP_LABELS.get(t.get("step", ""), t.get("step", "")),
-                        t.get("status", ""),
-                        f"{float(t.get('duration_seconds', 0)):.1f}s",
-                    )
-                    for t in last.get("tasks", [])
+                f"{data.format_pkt(base_run['started_at'])} · "
+                f"{float(base_run.get('duration_seconds', 0)):.0f}s"
+                + (
+                    " · later reruns shown per step"
+                    if any(t.get("rerun") for t in step_tasks)
+                    else ""
                 )
             )
+            for t in step_tasks:
+                step = str(t.get("step", ""))
+                c_row, c_btn = st.columns([5, 1.3], vertical_alignment="center")
+                c_row.html(
+                    step_row(
+                        data.STEP_LABELS.get(step, step),
+                        t.get("status", ""),
+                        (
+                            f"rerun {data.format_pkt(t['rerun_at'], '%d %b %H:%M')}"
+                            if t.get("rerun")
+                            else f"{float(t.get('duration_seconds', 0)):.1f}s"
+                        ),
+                    )
+                )
+                with c_btn:
+                    run_button(
+                        "Rerun",
+                        "run_step",
+                        step=step,
+                        key=f"pl_rerun_{step}",
+                        icon=":material/replay:",
+                        help=f"Run only the {data.STEP_LABELS.get(step, step)} step again",
+                        width="stretch",
+                    )
             for t in failed_steps:
                 st.error(
                     f"**{data.STEP_LABELS.get(t['step'], t['step'])}:** "
                     f"{t.get('error') or t.get('message') or 'failed'}"
                 )
-    with st.container(border=True):
-        st.markdown("##### Run it by hand")
-        st.code("uv run psx schedule run-daily --catch-up", language="bash")
-        st.caption(
-            "The Windows scheduled task runs this every hour after the market closes "
-            "and stops once the day has a successful run."
-        )
+
+
+def _result_label(run: dict) -> str:
+    if run.get("dry_run"):
+        return "Dry run"
+    outcome = "Success" if run.get("success") else "Failed"
+    return f"{outcome} (rerun)" if run.get("partial") else outcome
+
 
 with right:
     with st.container(border=True):
         st.markdown("##### Price data by stock")
+        if stale:
+            run_button(
+                f"Update {len(stale)} stock(s) that are behind",
+                "update_prices",
+                symbols=stale,
+                key="pl_update_stale",
+                icon=":material/download:",
+                help="Fetch the newest sessions for: " + ", ".join(stale),
+            )
         fresh = pd.DataFrame(
             {
                 "Stock": snap["symbol"],
@@ -125,9 +191,7 @@ with right:
                 [
                     {
                         "Started": data.format_pkt(r["started_at"], "%d %b %H:%M"),
-                        "Result": "Dry run"
-                        if r.get("dry_run")
-                        else ("Success" if r.get("success") else "Failed"),
+                        "Result": _result_label(r),
                         "Failed steps": ", ".join(
                             data.STEP_LABELS.get(t["step"], t["step"])
                             for t in r.get("tasks", [])
@@ -141,9 +205,12 @@ with right:
             )
 
             def _res_color(v: object) -> str:
-                return {"Success": f"color: {p.up}", "Failed": f"color: {p.down}"}.get(
-                    str(v), f"color: {p.muted}"
-                )
+                return {
+                    "Success": f"color: {p.up}",
+                    "Failed": f"color: {p.down}",
+                    "Success (rerun)": f"color: {p.up}",
+                    "Failed (rerun)": f"color: {p.down}",
+                }.get(str(v), f"color: {p.muted}")
 
             st.dataframe(
                 hist.style.map(_res_color, subset=["Result"]), hide_index=True, width="stretch"

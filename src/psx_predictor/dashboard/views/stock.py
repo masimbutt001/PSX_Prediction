@@ -9,6 +9,7 @@ from psx_predictor.dashboard.components.figures import (
     price_chart,
     probability_gauge,
 )
+from psx_predictor.dashboard.components.jobs_panel import run_button
 from psx_predictor.dashboard.components.ui import (
     disclaimer,
     fmt_pct,
@@ -65,7 +66,17 @@ with t1:
         f'<div style="margin-top:4px">{price_html}</div>'
     )
 with t2:
-    b1, b2 = st.columns(2)
+    b1, b3, b2 = st.columns(3)
+    with b3:
+        run_button(
+            "Update prices",
+            "update_prices",
+            symbols=[symbol],
+            key="sd_update",
+            icon=":material/download_for_offline:",
+            help=f"Fetch the newest sessions for {symbol} in the background",
+            width="stretch",
+        )
     if b1.button(
         "Refresh prediction",
         icon=":material/bolt:",
@@ -96,7 +107,21 @@ with t2:
         )
 
 if df.empty:
-    st.warning(f"No processed prices for {symbol}. Run `uv run psx update --symbol {symbol}`.")
+    with st.container(border=True):
+        st.warning(f"No price data for {symbol} yet.")
+        run_button(
+            f"Update {symbol} now",
+            "update_prices",
+            symbols=[symbol],
+            key="sd_update_missing",
+            primary=True,
+            icon=":material/download:",
+            help=f"Runs `psx data update --symbols {symbol}` in the background",
+        )
+        st.caption(
+            f"Same as running `uv run psx data update --symbols {symbol}` in a terminal. "
+            "Progress shows at the top of the page."
+        )
     st.stop()
 
 left, right = st.columns([2.3, 1], gap="large")

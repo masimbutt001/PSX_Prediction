@@ -11,6 +11,7 @@ import streamlit as st
 
 from psx_predictor import __version__
 from psx_predictor.dashboard import data, state
+from psx_predictor.dashboard.components.jobs_panel import job_panel
 from psx_predictor.dashboard.components.ui import status_pill
 from psx_predictor.dashboard.theme import inject_css
 
@@ -40,7 +41,7 @@ def build_pages() -> list["st.Page"]:
 def freshness_label(snap: pd.DataFrame) -> tuple[str, bool, bool]:
     """(text, ok, warn) for the data-freshness pill in the header."""
     if snap.empty or not snap["has_data"].any():
-        return "No price data yet · run psx bootstrap", False, False
+        return "No price data yet · update prices on the Pipeline page", False, False
     newest = str(snap["last_date"].dropna().max())
     stale = data.stale_symbols(snap)
     try:
@@ -104,6 +105,7 @@ def main() -> None:
     inject_css()
     nav = st.navigation(build_pages(), position="top")
     render_header()
+    job_panel()
     nav.run()
     st.caption(f"PSX Predictor v{__version__} · runs locally on your computer")
 

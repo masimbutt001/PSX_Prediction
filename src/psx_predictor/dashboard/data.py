@@ -325,3 +325,24 @@ def format_pkt(iso_ts: Any, fmt: str = "%a %d %b · %H:%M PKT") -> str:
     if ts.tzinfo is None:
         ts = ts.tz_localize("UTC")
     return ts.tz_convert("Asia/Karachi").strftime(fmt)
+
+
+def latest_steps(
+    runs: list[dict[str, Any]],
+) -> tuple[Optional[dict[str, Any]], list[dict[str, Any]]]:
+    """Newest full live run, with each step replaced by any later rerun of that step.
+
+    Returns (full_run, tasks); each task gains `rerun: True` when it comes from a rerun.
+    """
+    live = [r for r in runs if not r.get("dry_run")]  # runs are newest first
+    base_idx = next((i for i, r in enumerate(live) if not r.get("partial")), None)
+    if base_idx is None:
+        return (live[0], list(live[0].get("tasks", []))) if live else (None, [])
+    base = live[base_idx]
+    tasks = {t.get("step"): dict(t) for t in base.get("tasks", [])}
+    for rerun in reversed(live[:base_idx]):  # oldest rerun first, newest wins
+        for t in rerun.get("tasks", []):
+            tasks[t.get("step")] = {**t, "rerun": True, "rerun_at": rerun.get("started_at")}
+    order = [t.get("step") for t in base.get("tasks", [])]
+    order += [s for s in tasks if s not in order]
+    return base, [tasks[s] for s in order]

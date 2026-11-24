@@ -5,6 +5,7 @@ import streamlit as st
 
 from psx_predictor.dashboard import data, state
 from psx_predictor.dashboard.components.figures import sector_bar
+from psx_predictor.dashboard.components.jobs_panel import run_button
 from psx_predictor.dashboard.components.ui import (
     disclaimer,
     fmt_pct,
@@ -208,7 +209,7 @@ with right:
             st.plotly_chart(sector_bar(sect), width="stretch", config={"displayModeBar": False})
 
     runs = state.pipeline_runs(limit=10)
-    run = data.latest_live_run(runs)
+    run, run_tasks = data.latest_steps(runs)
     with st.container(border=True):
         st.markdown("##### Last daily run")
         if run is None:
@@ -225,10 +226,14 @@ with right:
                     t.get("status", ""),
                     "OK" if t.get("status") == "SUCCESS" else t.get("status", "").title(),
                 )
-                for t in run.get("tasks", [])
+                for t in run_tasks
             )
             st.html(rows)
-        st.page_link("views/pipeline.py", label="Open pipeline details", icon=":material/sync:")
+        l1, l2 = st.columns([1.2, 1], vertical_alignment="center")
+        with l1:
+            st.page_link("views/pipeline.py", label="Open pipeline details", icon=":material/sync:")
+        with l2:
+            run_button("Run now", "run_pipeline", key="ov_run_pipeline", width="stretch")
 
     headlines = state.news(limit=5)
     with st.container(border=True):
