@@ -296,50 +296,33 @@ uv run psx health drift --symbol OGDC --recent-sessions 60 --reference-sessions 
 
 ## Interactive Streamlit Dashboard Guide
 
-The platform includes a multi-page interactive web application built with Streamlit and Plotly in a sleek dark theme (`#0e1117`).
+The dashboard is a Streamlit app with top navigation, a dark and a light theme, and interactive Plotly charts.
 
 ### Launching the Dashboard
+Run it from the repository root, so Streamlit picks up the theme in `.streamlit/config.toml` and the app finds `data/`:
 ```bash
 uv run psx dashboard
 # Alternatively:
 uv run streamlit run src/psx_predictor/dashboard/app.py
 ```
-Open your browser at `http://localhost:8501`.
+Open your browser at `http://localhost:8501`. Switch between light and dark from the app menu: ⋮ > Settings > Theme.
 
-### Dashboard Navigation & Views
+### Dashboard Pages
 
 ```
-Streamlit Application
-├── Home (app.py)                   -> System status, universe overview, data diagnostics
-├── 1_Market_Overview.py            -> Full-universe monitoring, signal badges, sector charts
-├── 2_Stock_Analysis.py             -> Candlestick charts, technical indicators, ML prediction cards
-├── 3_Model_Performance.py          -> Backtesting simulator, equity curves, drawdown analysis
-└── 4_Research.py                   -> Stock research files, score history, catalysts, risks, sources
+src/psx_predictor/dashboard/
+├── app.py              -> Top navigation, stock search, data freshness, refresh
+├── views/overview.py   -> KPIs (KSE-100, signals, hit rate, Brier, USD/PKR), watchlist with
+│                          sector and signal filters, 30-session trend, CSV export,
+│                          sector moves, last daily run, latest news
+├── views/stock.py      -> Stock switcher, candlestick chart (1M-All, SMA 20/50, Bollinger,
+│                          volume, next-session marker), prediction card with drivers,
+│                          prediction history, news and research tabs
+├── views/performance.py-> Live track record (hit rate, Brier, calibration chart, per stock)
+│                          and the strategy backtester
+├── views/research.py   -> Stock research files, score history, catalysts, risks, sources
+└── views/pipeline.py   -> Daily run steps and errors, run history, price freshness per stock
 ```
-
-1. **Home (`app.py`)**:
-   - Platform operational status, storage path verification, and Parquet record availability counters.
-   - Quick navigation guide and architecture summary.
-
-2. **Market Overview (`pages/1_Market_Overview.py`)**:
-   - Comprehensive universe table displaying latest closing prices, 1-day percentage change, sector classification, and latest ML signals.
-   - Donut charts showing active directional signal distributions (🟢 `BUY`, 🔴 `SELL`, 🟡 `HOLD`) and sector concentration.
-
-3. **Stock Analysis (`pages/2_Stock_Analysis.py`)**:
-   - **Multi-Panel Plotly Candlestick Chart**: High-resolution interactive chart with volume bars (color-coded green/red), SMA 20, SMA 50, and 2-standard-deviation Bollinger Bands with soft fills.
-   - **Forward-Looking Prediction Card**: Live directional signal badge, calibrated confidence meter, expected return, and a horizontal bar chart displaying top predictive feature drivers.
-   - **On-Demand Live Inference Button**: Generate and log forward forecasts directly from the UI.
-
-4. **Model Performance & Backtesting (`pages/3_Model_Performance.py`)**:
-   - Interactive quantitative backtesting simulator for Moving Average Crossover, Momentum, and Buy-and-Hold benchmarks.
-   - **Equity Growth Curve**: Compares strategy portfolio value against benchmark in Pakistani Rupees (PKR).
-   - **Underwater Drawdown Chart**: Shaded area chart tracking portfolio drawdowns from peak equity.
-   - **Performance KPI Grid**: Real-time calculation of Sharpe Ratio, CAGR, Max Drawdown %, and Win Rate %.
-
-5. **Research (`pages/4_Research.py`)**:
-   - Latest research for every stock, ranked by recency-weighted short-term outlook, with stale research flagged.
-   - Per stock: every research date, score history chart, stance and fair value, the full Markdown report, catalysts, risks, news, financials, upcoming events and sources.
-   - Shows whether the latest prediction agrees with the research.
 
 ---
 
@@ -481,7 +464,7 @@ PSX_Prediction/
 │   ├── backtest/                   # Walk-forward backtester & performance analytics
 │   ├── cli/                        # Typer CLI subcommands & Rich visual formatting
 │   ├── config/                     # YAML configuration loaders & validators
-│   ├── dashboard/                  # Streamlit multi-page research dashboard
+│   ├── dashboard/                  # Streamlit dashboard (app.py, views/, components/, theme.py)
 │   ├── data/                       # Market data collectors (DPS, Yahoo Finance)
 │   ├── features/                   # Technical indicator builders & multi-modal mergers
 │   ├── macro/                      # Macroeconomic indicator ingestors
