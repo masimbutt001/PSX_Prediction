@@ -160,20 +160,36 @@ class DailyPipelineRunner:
         dps_col = DPSAnnouncementsCollector(storage_paths=self.paths)
         processor = NewsNLPProcessor(storage_paths=self.paths)
 
-        rss_res = self._execute_with_retry(
-            lambda: rss_col.fetch_all(dry_run=False),
-            step_name="collect_news_rss",
-        )
-        dps_res = self._execute_with_retry(
-            lambda: dps_col.fetch_announcements(count=50, dry_run=False),
-            step_name="collect_news_dps",
-        )
-        proc_res = processor.process_all(dry_run=False)
+        # Each source is optional: one source being down (e.g. the PSX announcements page
+        # dropping the connection) must not throw away news from the other.
+        parts: list[str] = []
+        errors: list[str] = []
+        try:
+            rss_res = self._execute_with_retry(
+                lambda: rss_col.fetch_all(dry_run=False),
+                step_name="collect_news_rss",
+            )
+            parts.append(f"{rss_res.new_articles_added} RSS")
+        except Exception as exc:
+            errors.append(f"RSS news: {exc}")
+        try:
+            dps_res = self._execute_with_retry(
+                lambda: dps_col.fetch_announcements(count=50, dry_run=False),
+                step_name="collect_news_dps",
+            )
+            parts.append(f"{dps_res.new_announcements_added} DPS")
+        except Exception as exc:
+            errors.append(f"PSX announcements: {exc}")
 
-        return (
-            f"Ingested {rss_res.new_articles_added} RSS, {dps_res.new_announcements_added} DPS, "
-            f"created {proc_res.new_signals_created} signals"
-        )
+        if not parts:
+            raise RuntimeError("All news sources failed. " + "; ".join(errors))
+
+        proc_res = processor.process_all(dry_run=False)
+        msg = f"Ingested {', '.join(parts)}, created {proc_res.new_signals_created} signals"
+        if errors:
+            msg += " (skipped " + "; ".join(errors) + ")"
+            logger.warning(msg)
+        return msg
 
     def _step_update_macro(self, dry_run: bool) -> str:
         """Step 3: Synchronize USD/PKR, Brent crude, KIBOR, and policy rates."""
