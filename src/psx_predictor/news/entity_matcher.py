@@ -76,10 +76,143 @@ DEFAULT_ALIASES: dict[str, list[str]] = {
         "Ghani Global",
         "GGL",
     ],
+    "AIRLINK": [
+        "Air Link Communication Limited",
+        "Air Link Communication",
+        "Airlink Communication",
+        "AIRLINK",
+    ],
+    "ATRL": [
+        "Attock Refinery Limited",
+        "Attock Refinery",
+        "ATRL",
+    ],
+    "CPHL": [
+        "Citi Pharma Limited",
+        "Citi Pharma Ltd",
+        "Citi Pharma",
+        "CPHL",
+    ],
+    "DGKC": [
+        "D.G. Khan Cement Company Limited",
+        "D.G. Khan Cement",
+        "DG Khan Cement",
+        "DGKC",
+    ],
+    "EFERT": [
+        "Engro Fertilizers Limited",
+        "Engro Fertilizers",
+        "Engro Fertilizer",
+        "EFERT",
+    ],
+    "FCCL": [
+        "Fauji Cement Company Limited",
+        "Fauji Cement Company",
+        "Fauji Cement",
+        "FCCL",
+    ],
+    "FFL": [
+        "Fauji Foods Limited",
+        "Fauji Foods",
+        "FFL",
+    ],
+    "GAL": [
+        "Ghandhara Automobiles Limited",
+        "Ghandhara Automobiles",
+        "GAL",
+    ],
+    "GHNI": [
+        "Ghandhara Industries Limited",
+        "Ghandhara Industries",
+        "GHNI",
+    ],
+    "HCAR": [
+        "Honda Atlas Cars (Pakistan) Limited",
+        "Honda Atlas Cars",
+        "Honda Atlas",
+        "HCAR",
+    ],
+    "MARI": [
+        "Mari Energies Limited",
+        "Mari Energies",
+        "Mari Petroleum Company Limited",
+        "Mari Petroleum",
+        "MARI",
+    ],
+    "MEBL": [
+        "Meezan Bank Limited",
+        "Meezan Bank",
+        "MEBL",
+    ],
+    "MLCF": [
+        "Maple Leaf Cement Factory Limited",
+        "Maple Leaf Cement Factory",
+        "Maple Leaf Cement",
+        "MLCF",
+    ],
+    "NML": [
+        "Nishat Mills Limited",
+        "Nishat Mills",
+        "NML",
+    ],
+    "NRL": [
+        "National Refinery Limited",
+        "National Refinery",
+        "NRL",
+    ],
+    "PAEL": [
+        "Pak Elektron Limited",
+        "Pak Elektron",
+        "PEL",
+        "PAEL",
+    ],
+    "PRL": [
+        "Pakistan Refinery Limited",
+        "Pakistan Refinery",
+        "PRL",
+    ],
+    "PSO": [
+        "Pakistan State Oil Company Limited",
+        "Pakistan State Oil",
+        "PSO",
+    ],
+    "SAZEW": [
+        "Sazgar Engineering Works Limited",
+        "Sazgar Engineering Works",
+        "Sazgar Engineering",
+        "Sazgar",
+        "SAZEW",
+    ],
+    "SEARL": [
+        "The Searle Company Limited",
+        "Searle Company Limited",
+        "Searle Company",
+        "Searle",
+        "SEARL",
+    ],
+    "SNGP": [
+        "Sui Northern Gas Pipelines Limited",
+        "Sui Northern Gas Pipelines",
+        "Sui Northern Gas",
+        "SNGPL",
+        "SNGP",
+    ],
+    "SSGC": [
+        "Sui Southern Gas Company Limited",
+        "Sui Southern Gas Company",
+        "Sui Southern Gas",
+        "SSGCL",
+        "SSGC",
+    ],
+    "TREET": [
+        "Treet Corporation Limited",
+        "Treet Corporation",
+        "TREET",
+    ],
 }
 
 # Tickers that are also common lowercase English words or roots
-CASE_SENSITIVE_TICKERS: set[str] = {"LUCK", "SYS", "ENGRO", "ENGROH", "AIR", "PACE"}
+CASE_SENSITIVE_TICKERS: set[str] = {"LUCK", "SYS", "ENGRO", "ENGROH", "AIR", "PACE", "MARI", "GAL", "TREET", "PEL"}
 
 
 class EntityMatcher:

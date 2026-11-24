@@ -18,7 +18,7 @@ as files in this workspace. The files are read by a Python app, so the JSON
 must follow the schema below exactly.
 
 SYMBOLS: OGDC
-(Comma separated. Supported: OGDC, PPL, ENGROH, FFC, LUCK, HBL, MCB, UBL, HUBC, SYS, GGL)
+(Comma separated. Supported: the KMI-30 universe in config/stocks.yaml, e.g. AIRLINK, ATRL, CPHL, DGKC, EFERT, ENGROH, FCCL, FFC, FFL, GAL, GHNI, HCAR, HUBC, LUCK, MARI, MEBL, MLCF, NML, NRL, OGDC, PAEL, PPL, PRL, PSO, SAZEW, SEARL, SNGP, SSGC, SYS, TREET)
 
 RESEARCH_DATE: today's date in Pakistan time (Asia/Karachi), format YYYY-MM-DD.
 

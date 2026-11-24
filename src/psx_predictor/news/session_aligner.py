@@ -459,7 +459,7 @@ class NewsSessionAligner:
             symbols = (
                 sorted(symbols_set)
                 if symbols_set
-                else ["OGDC", "PPL", "LUCK", "SYS", "UBL", "MCB", "HUBC"]
+                else ["OGDC", "PPL", "LUCK", "SYS", "MEBL", "EFERT", "HUBC"]
             )
 
         summary.symbols_covered = symbols

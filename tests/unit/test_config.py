@@ -137,3 +137,25 @@ def test_cli_config_show_custom_dir(cli_runner: CliRunner, tmp_path: Path) -> No
     result = cli_runner.invoke(app, ["config", "show", "--config-dir", str(empty_dir)])
     assert result.exit_code == 0
     assert "0 active / 0 total" in result.output
+
+
+def test_default_universe_is_kmi30() -> None:
+    """The tracked universe is the KMI-30 index (Shariah-compliant stocks only)."""
+    config = load_config()
+    symbols = {s.symbol for s in config.stocks}
+    assert len(symbols) == len(config.stocks) == 30
+    assert {"MEBL", "EFERT", "MARI", "PSO", "SYS", "ENGROH"} <= symbols
+    # Conventional banks and stocks outside KMI-30 are not tracked.
+    assert symbols.isdisjoint({"HBL", "MCB", "UBL", "GGL", "ENGRO"})
+
+
+def test_kmi30_symbols_have_news_aliases() -> None:
+    """Every universe stock can be matched in news text by its company name."""
+    from psx_predictor.news.entity_matcher import DEFAULT_ALIASES, EntityMatcher
+
+    config = load_config()
+    for s in config.stocks:
+        assert s.symbol in DEFAULT_ALIASES, s.symbol
+    matcher = EntityMatcher()
+    assert matcher.match("Meezan Bank posts record profit") == ["MEBL"]
+    assert "SNGP" in matcher.match("Sui Northern Gas Pipelines raises tariff")
