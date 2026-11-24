@@ -255,3 +255,12 @@ def test_cli_backtest_command(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -
     assert "Initiating backtest for OGDC" in res.stdout
     assert "PSX Strategy Backtest Report: OGDC (SMA_CROSSOVER)" in res.stdout
     assert "Final Portfolio Equity" in res.stdout
+    assert "Buy-and-hold over the same sessions" in res.stdout
+
+
+def test_hold_band_signals_only_trade_outside_band() -> None:
+    from psx_predictor.backtesting.runner import hold_band_signals
+
+    proba = np.array([0.52, 0.56, 0.53, 0.47, 0.44, 0.49, 0.56])
+    assert hold_band_signals(proba, 0.05).tolist() == [0, 1, 1, 1, 0, 0, 1]
+    assert hold_band_signals(proba, 0.0).tolist() == [1, 1, 1, 0, 0, 0, 1]

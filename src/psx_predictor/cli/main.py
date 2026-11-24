@@ -1137,6 +1137,13 @@ def backtest_command(
             help="Annual risk-free benchmark rate (default: 0.15 for 15% SBP policy rate)",
         ),
     ] = 0.15,
+    hold_band: Annotated[
+        float,
+        typer.Option(
+            "--hold-band",
+            help="Logistic only: trade only when P(up) is outside 0.5 +/- band (default 0.05)",
+        ),
+    ] = 0.05,
 ) -> None:
     """Simulate trading strategy with realistic PSX transaction frictions and circuit locks."""
     from psx_predictor.backtesting.metrics import display_backtest_report
@@ -1162,6 +1169,7 @@ def backtest_command(
             strategy=strategy,
             initial_cash=initial_cash,
             risk_free_rate=rf_rate,
+            hold_band=hold_band,
         )
     except FileNotFoundError as fnf:
         console.print(f"[bold red]Data Error:[/bold red] {fnf}")
@@ -1171,6 +1179,13 @@ def backtest_command(
         raise typer.Exit(code=1) from exc
 
     display_backtest_report(metrics=metrics, result=sim_result, console=console)
+    bench = runner.buy_and_hold_return(clean_sym, sim_result)
+    if bench is not None:
+        verdict = "beats" if sim_result.total_return > bench else "does not beat"
+        console.print(
+            f"Buy-and-hold over the same sessions: [bold]{bench:+.1%}[/bold] "
+            f"(strategy {sim_result.total_return:+.1%}, {verdict} buy-and-hold)"
+        )
 
 
 def _swing_backtest_cli(
