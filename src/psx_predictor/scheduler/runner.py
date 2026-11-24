@@ -275,6 +275,7 @@ class DailyPipelineRunner:
         symbols: Optional[list[str]] = None,
         skip_non_trading_days: bool = False,
         run_date: Optional[datetime.date] = None,
+        only_steps: Optional[list[DailyPipelineStep]] = None,
     ) -> Optional[PipelineRunReport]:
         """Execute end-to-end daily operational routine in strict topological sequence.
 
@@ -286,6 +287,8 @@ class DailyPipelineRunner:
                 scheduler daemon and by external schedulers such as Windows Task Scheduler.
             run_date: Date to check against the PSX calendar (defaults to today in the
                 configured timezone).
+            only_steps: Run just these steps (in pipeline order). The run is logged as
+                partial, so it never counts as the day's full run for --catch-up.
 
         Returns:
             The run report, or None when the run was skipped because PSX is closed.
@@ -313,6 +316,11 @@ class DailyPipelineRunner:
             DailyPipelineStep.GENERATE_PREDICTIONS,
             DailyPipelineStep.AUDIT_PREDICTIONS,
         ]
+        partial = False
+        if only_steps:
+            wanted = set(only_steps)
+            partial = wanted != set(steps)
+            steps = [s for s in steps if s in wanted]
 
         self.console.print(
             f"Starting Daily EOD Pipeline Orchestrator | "
@@ -348,6 +356,7 @@ class DailyPipelineRunner:
             success=overall_success,
             tasks=tasks,
             dry_run=dry_run,
+            partial=partial,
         )
 
         # Append execution record to pipeline.log
@@ -375,7 +384,11 @@ class DailyPipelineRunner:
                 started = datetime.datetime.fromisoformat(entry["started_at"]).astimezone(tz)
             except (ValueError, KeyError, TypeError):
                 continue
-            if started.date() == day and not entry.get("dry_run", False):
+            if (
+                started.date() == day
+                and not entry.get("dry_run", False)
+                and not entry.get("partial", False)
+            ):
                 runs.append(entry)
         return runs
 
@@ -405,9 +418,7 @@ class DailyPipelineRunner:
             return False, f"Gave up after {len(runs)} failed attempts on {today.isoformat()}."
         return True, f"Running daily pipeline for {today.isoformat()} (attempt {len(runs) + 1})."
 
-    def run_catch_up(
-        self, now: Optional[datetime.datetime] = None
-    ) -> Optional[PipelineRunReport]:
+    def run_catch_up(self, now: Optional[datetime.datetime] = None) -> Optional[PipelineRunReport]:
         """Run the pipeline only if today's run is due and has not completed yet."""
         should_run, reason = self.catch_up_decision(now)
         logger.info(reason)

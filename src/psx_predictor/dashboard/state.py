@@ -1,7 +1,7 @@
 """Cached data loaders and the shared stock selection for the dashboard pages."""
 
 from pathlib import Path
-from typing import Any, Optional
+from typing import TYPE_CHECKING, Any, Optional
 
 import pandas as pd
 import streamlit as st
@@ -10,6 +10,9 @@ from psx_predictor.config.loader import load_config
 from psx_predictor.config.schema import AppConfig
 from psx_predictor.dashboard import data
 from psx_predictor.storage.paths import get_storage_paths
+
+if TYPE_CHECKING:
+    from psx_predictor.dashboard.jobs import JobManager
 
 CACHE_TTL_SECONDS = 300
 SYMBOL_KEY = "psx_symbol"
@@ -94,3 +97,22 @@ def selected_symbol() -> str:
 
 def select_symbol(symbol: str) -> None:
     st.session_state[SYMBOL_KEY] = symbol
+
+
+@st.cache_resource
+def job_manager() -> "JobManager":
+    """One job manager per dashboard process, writing to data/jobs/."""
+    from psx_predictor.dashboard.jobs import JobManager
+
+    return JobManager(jobs_dir=get_paths()["root"] / "jobs", cwd=Path.cwd())
+
+
+def commands_allowed() -> bool:
+    """Run buttons only work for someone using the dashboard on this computer."""
+    from psx_predictor.dashboard.jobs import is_local_request
+
+    try:
+        ip = st.context.ip_address
+    except Exception:
+        ip = None
+    return is_local_request(st.get_option("server.address"), ip)

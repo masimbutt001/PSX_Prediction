@@ -50,6 +50,7 @@ class PipelineRunReport:
     success: bool
     tasks: list[PipelineTaskResult] = field(default_factory=list)
     dry_run: bool = False
+    partial: bool = False  # only some steps were run (e.g. a rerun from the dashboard)
 
     def to_dict(self) -> dict[str, Any]:
         """Convert full run report to serializable dictionary."""
@@ -59,6 +60,7 @@ class PipelineRunReport:
             "duration_seconds": round(self.duration_seconds, 2),
             "success": self.success,
             "dry_run": self.dry_run,
+            "partial": self.partial,
             "tasks": [t.to_dict() for t in self.tasks],
         }
 
