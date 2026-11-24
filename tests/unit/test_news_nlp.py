@@ -42,7 +42,7 @@ class TestEntityMatcher:
             "HUBC",
             "PPL",
         ]
-        assert matcher.match("Engro Corp and Fauji Fertilizer in discussion") == ["ENGRO", "FFC"]
+        assert matcher.match("Engro Corp and Fauji Fertilizer in discussion") == ["ENGROH", "FFC"]
 
     def test_avoid_common_word_false_positives(self) -> None:
         matcher = EntityMatcher()

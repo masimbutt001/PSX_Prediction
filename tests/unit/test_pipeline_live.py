@@ -311,3 +311,29 @@ def test_news_step_survives_one_source_failing(tmp_path: Path, offline_network: 
 
     assert result.status == "SUCCESS"
     assert "RSS" in result.message and "skipped PSX announcements" in result.message
+
+
+class _NoKse100Ticker(_FakeTicker):
+    def history(self, start: str, end: str, **kwargs: Any) -> pd.DataFrame:
+        if self.ticker.startswith("^KSE"):
+            return pd.DataFrame({"Close": []})
+        return super().history(start, end, **kwargs)
+
+
+def test_macro_step_passes_without_kse100(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A missing KSE-100 day is a warning, while missing USD/PKR or Brent still fails the step."""
+    import yfinance
+
+    monkeypatch.setattr(DPSCollector, "fetch_raw", _failing_dps_fetch)
+    runner = DailyPipelineRunner(data_dir=tmp_path / "data")
+
+    monkeypatch.setattr(yfinance, "Ticker", _NoKse100Ticker)
+    msg = runner._step_update_macro(dry_run=False)
+    assert "no fresh data for KSE_100" in msg
+
+    monkeypatch.setattr(yfinance, "Ticker", _FailingTicker)
+    monkeypatch.setattr(DailyPipelineRunner, "_execute_with_retry", lambda self, fn, **_: fn())
+    with pytest.raises(RuntimeError, match="USD_PKR"):
+        runner._step_update_macro(dry_run=False)

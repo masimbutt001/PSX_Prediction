@@ -18,7 +18,7 @@ as files in this workspace. The files are read by a Python app, so the JSON
 must follow the schema below exactly.
 
 SYMBOLS: OGDC
-(Comma separated. Supported: OGDC, PPL, ENGRO, FFC, LUCK, HBL, MCB, UBL, HUBC, SYS, GGL)
+(Comma separated. Supported: OGDC, PPL, ENGROH, FFC, LUCK, HBL, MCB, UBL, HUBC, SYS, GGL)
 
 RESEARCH_DATE: today's date in Pakistan time (Asia/Karachi), format YYYY-MM-DD.
 

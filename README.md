@@ -151,7 +151,7 @@ uv run psx data bootstrap --symbols OGDC,HBL,LUCK --years 3
 uv run psx data update
 
 # Update a subset of symbols
-uv run psx data update --symbols SYS,ENGRO
+uv run psx data update --symbols SYS,ENGROH
 
 # Inspect data quality and identify missing sessions or anomalies
 uv run psx data quality

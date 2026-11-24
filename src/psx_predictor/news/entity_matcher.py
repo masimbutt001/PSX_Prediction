@@ -21,11 +21,14 @@ DEFAULT_ALIASES: dict[str, list[str]] = {
         "Pakistan Petroleum",
         "PPL",
     ],
-    "ENGRO": [
+    "ENGROH": [
+        "Engro Holdings Limited",
+        "Engro Holdings",
         "Engro Corporation Limited",
         "Engro Corporation",
         "Engro Corp",
         "Engro",
+        "ENGRO",
     ],
     "FFC": [
         "Fauji Fertilizer Company Limited",
@@ -76,7 +79,7 @@ DEFAULT_ALIASES: dict[str, list[str]] = {
 }
 
 # Tickers that are also common lowercase English words or roots
-CASE_SENSITIVE_TICKERS: set[str] = {"LUCK", "SYS", "ENGRO", "AIR", "PACE"}
+CASE_SENSITIVE_TICKERS: set[str] = {"LUCK", "SYS", "ENGRO", "ENGROH", "AIR", "PACE"}
 
 
 class EntityMatcher:
