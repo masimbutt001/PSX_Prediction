@@ -23,6 +23,23 @@ from psx_predictor.models.split import DEFAULT_TECHNICAL_FEATURES
 from psx_predictor.storage.parquet_io import read_parquet
 from psx_predictor.storage.paths import ensure_directories
 
+# On PSX data the next-day model's probabilities hover around 0.5, so trading every
+# crossing mostly pays friction. A band of 0.05 cut trades about 3x in walk-forward tests.
+DEFAULT_HOLD_BAND = 0.05
+
+
+def hold_band_signals(proba: np.ndarray, band: float = DEFAULT_HOLD_BAND) -> np.ndarray:
+    """Turn P(up) into long/flat signals, changing position only outside 0.5 +/- band."""
+    signals = np.zeros(len(proba), dtype=float)
+    position = 0.0
+    for i, p in enumerate(proba):
+        if p > 0.5 + band:
+            position = 1.0
+        elif p < 0.5 - band:
+            position = 0.0
+        signals[i] = position
+    return signals
+
 
 class BacktestRunner:
     """Executes trading strategies and walk-forward simulations against PSX market data."""
@@ -51,6 +68,7 @@ class BacktestRunner:
         initial_cash: float = 1_000_000.0,
         risk_free_rate: float = 0.15,
         use_walk_forward: bool = False,
+        hold_band: float = DEFAULT_HOLD_BAND,
     ) -> tuple[SimulationResult, BacktestMetrics]:
         """Execute strategy simulation and compute comprehensive metrics.
 
@@ -60,6 +78,8 @@ class BacktestRunner:
             initial_cash: Starting portfolio capital in PKR.
             risk_free_rate: Annual risk-free rate (e.g. 0.15 for 15% SBP policy rate).
             use_walk_forward: Whether to use walk-forward expanding folds for ML models.
+            hold_band: For 'logistic', buy only when P(up) > 0.5 + band and sell only when
+                P(up) < 0.5 - band; in between, keep the current position.
 
         Returns:
             Tuple of (SimulationResult, BacktestMetrics).
@@ -104,7 +124,8 @@ class BacktestRunner:
             logger.info(f"[{symbol}] Executing across {len(folds)} walk-forward folds...")
 
             # Collect out-of-sample predictions
-            oos_signals = np.zeros(len(clean_df), dtype=float)
+            # Days outside every test fold keep 0.5, which holds the current position
+            oos_proba = np.full(len(clean_df), 0.5, dtype=float)
             for fold in folds:
                 X_tr = clean_df.iloc[fold.train_indices][feature_cols]
                 y_tr = clean_df.iloc[fold.train_indices][target_col]
@@ -112,13 +133,12 @@ class BacktestRunner:
 
                 clf = LogisticRegressionBaseline()
                 clf.fit(X_tr, y_tr)
-                preds = clf.predict(X_te)
-                oos_signals[fold.test_indices] = preds
+                oos_proba[fold.test_indices] = clf.predict_proba(X_te)[:, 1]
 
             # Use the clean_df evaluation slice
             eval_start = folds[0].test_indices[0]
             df = clean_df.iloc[eval_start:].reset_index(drop=True)
-            signals = oos_signals[eval_start:]
+            signals = hold_band_signals(oos_proba[eval_start:], hold_band)
 
         else:
             raise ValueError(
@@ -147,3 +167,23 @@ class BacktestRunner:
         )
 
         return sim_result, metrics
+
+    def buy_and_hold_return(self, symbol: str, result: SimulationResult) -> float | None:
+        """Buy-and-hold total return over the same sessions as a finished backtest."""
+        curve = result.equity_curve
+        if curve.empty or "trade_date" not in curve.columns:
+            return None
+        df = self.load_dataset(symbol)
+        dates = pd.to_datetime(df["trade_date"])
+        window = df[
+            (dates >= pd.to_datetime(curve["trade_date"].iloc[0]))
+            & (dates <= pd.to_datetime(curve["trade_date"].iloc[-1]))
+        ].reset_index(drop=True)
+        if window.empty:
+            return None
+        bench = BacktestSimulator(
+            initial_cash=result.initial_cash, cost_model=TransactionCostModel()
+        )
+        return bench.simulate(
+            df=window, signals=np.ones(len(window)), symbol=symbol, strategy_name="BUY_AND_HOLD"
+        ).total_return
