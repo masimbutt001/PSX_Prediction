@@ -212,7 +212,18 @@ DEFAULT_ALIASES: dict[str, list[str]] = {
 }
 
 # Tickers that are also common lowercase English words or roots
-CASE_SENSITIVE_TICKERS: set[str] = {"LUCK", "SYS", "ENGRO", "ENGROH", "AIR", "PACE", "MARI", "GAL", "TREET", "PEL"}
+CASE_SENSITIVE_TICKERS: set[str] = {
+    "LUCK",
+    "SYS",
+    "ENGRO",
+    "ENGROH",
+    "AIR",
+    "PACE",
+    "MARI",
+    "GAL",
+    "TREET",
+    "PEL",
+}
 
 
 class EntityMatcher:
