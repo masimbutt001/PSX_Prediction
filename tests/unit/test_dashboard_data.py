@@ -233,3 +233,36 @@ def test_pages_render_without_errors(
     assert not at.exception, [e.value for e in at.exception]
     if page in ("overview.py", "pipeline.py"):
         assert len(at.dataframe) >= 1
+
+
+def test_call_sessions_counts_scored_and_right(preds: pd.DataFrame) -> None:
+    s = data.call_sessions(preds)
+    assert list(s["target_date"]) == ["2026-11-24", "2026-11-20", "2026-11-19"]
+    row = s.set_index("target_date").loc["2026-11-20"]
+    # deduped: OGDC (latest re-run, wrong) and PPL (wrong)
+    assert (row["calls"], row["scored"], row["correct"]) == (2, 2, 0)
+    assert s.set_index("target_date").loc["2026-11-24", "scored"] == 0
+    # the newest day is not closed yet, so the default is the newest scored day
+    assert data.latest_scored_session(s) == "2026-11-20"
+    assert data.latest_scored_session(data.call_sessions(pd.DataFrame())) is None
+
+
+def test_session_calls_joins_closes_and_results(preds: pd.DataFrame) -> None:
+    px = _prices(end="2026-11-20")
+    calls = data.session_calls(preds, "2026-11-20", prices=lambda sym: px)
+    assert list(calls["Stock"]) == ["OGDC", "PPL"]
+    ogdc = calls.iloc[0]
+    assert ogdc["Call"] == "BUY" and ogdc["Result"] == "Wrong" and ogdc["Went"] == "Down"
+    assert ogdc["Actual move"] == pytest.approx(-2.0)
+    assert ogdc["Close"] == pytest.approx(px["close"].iloc[-1])
+    assert ogdc["Previous close"] == pytest.approx(px["close"].iloc[-2])
+    assert calls.iloc[1]["Went"] == "Up"
+
+    pending = data.session_calls(preds, "2026-11-24", prices=lambda sym: px)
+    assert list(pending["Result"]) == ["Pending"]
+    assert pending.iloc[0]["Went"] == "Not closed yet"
+    assert np.isnan(pending.iloc[0]["Close"])
+
+    right_first = data.session_calls(preds, "2026-11-19")
+    assert list(right_first["Result"]) == ["Right"]
+    assert np.isnan(right_first.iloc[0]["Previous close"])
