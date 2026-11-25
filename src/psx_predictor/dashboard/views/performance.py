@@ -44,6 +44,92 @@ tab_live, tab_bt = st.tabs(
 # ---- Live track record ----
 with tab_live:
     preds = state.predictions()
+
+    # Day by day: each call for one session next to what the stock really did.
+    with st.container(border=True):
+        section_title("Yesterday's calls vs. today's result", "pf_daily_calls")
+        sessions = data.call_sessions(preds)
+        if sessions.empty:
+            st.caption(
+                "No predictions logged yet. The daily run makes calls for the next session."
+            )
+        else:
+            labels = {}
+            for _, srow in sessions.iterrows():
+                day = pd.Timestamp(srow["target_date"]).strftime("%a %d %b %Y")
+                if srow["scored"] == 0:
+                    tag = "not closed yet"
+                else:
+                    tag = f"{srow['correct']} of {srow['scored']} right"
+                labels[str(srow["target_date"])] = f"{day} · {tag}"
+            options = list(labels)
+            default = data.latest_scored_session(sessions)
+            picked = st.selectbox(
+                "Session",
+                options,
+                index=options.index(default) if default in options else 0,
+                format_func=lambda d: labels[d],
+                key="perf_daily_session",
+                help="The trading day the calls were for. Newest first.",
+            )
+            srow = sessions[sessions["target_date"] == picked].iloc[0]
+            called = data.format_pkt(srow["called_on"], "%a %d %b, %H:%M PKT")
+            calls = data.session_calls(preds, picked, prices=state.prices)
+            n_right = int((calls["Result"] == "Right").sum())
+            n_scored = int((calls["Result"] != "Pending").sum())
+            n_pending = len(calls) - n_scored
+            parts = [f"Calls made {called} for the {labels[picked].split(' · ')[0]} session."]
+            if n_scored:
+                parts.append(f"**{n_right} of {n_scored} right ({n_right / n_scored:.0%}).**")
+            if n_pending:
+                parts.append(
+                    f"{n_pending} still pending: they are scored after that day's close comes "
+                    "in and the daily run's audit step finishes."
+                )
+            st.markdown(" ".join(parts))
+            newer = sessions[(sessions["target_date"] > picked) & (sessions["scored"] == 0)]
+            if not newer.empty and picked == default:
+                nxt = pd.Timestamp(newer["target_date"].iloc[-1]).strftime("%a %d %b")
+                st.caption(
+                    f"Calls for {nxt} are already made. Pick that day above to see them; "
+                    "they show as Pending until it closes."
+                )
+
+            def _result_color(v: object) -> str:
+                return {
+                    "Right": f"color: {p.up}; font-weight: 600",
+                    "Wrong": f"color: {p.down}; font-weight: 600",
+                }.get(str(v), f"color: {p.muted}")
+
+            def _went_color(v: object) -> str:
+                return {"Up": f"color: {p.up}", "Down": f"color: {p.down}"}.get(
+                    str(v), f"color: {p.muted}"
+                )
+
+            def _call_color(v: object) -> str:
+                return {"BUY": f"color: {p.up}", "SELL": f"color: {p.down}"}.get(
+                    str(v), f"color: {p.muted}"
+                )
+
+            shown = calls.copy()
+            shown["Chance of UP"] = shown["Chance of UP"] * 100
+            st.dataframe(
+                shown.style.map(_result_color, subset=["Result"])
+                .map(_went_color, subset=["Went"])
+                .map(_call_color, subset=["Call"]),
+                hide_index=True,
+                width="stretch",
+                column_config={
+                    "Chance of UP": st.column_config.ProgressColumn(
+                        min_value=0.0, max_value=100.0, format="%.0f%%"
+                    ),
+                    "Previous close": st.column_config.NumberColumn(format="%.2f"),
+                    "Close": st.column_config.NumberColumn(format="%.2f"),
+                    "Actual move": st.column_config.NumberColumn(format="%+.2f%%"),
+                },
+            )
+    st.write("")
+
     with st.container(horizontal=True, vertical_alignment="center", gap="small"):
         window = (
             st.segmented_control(

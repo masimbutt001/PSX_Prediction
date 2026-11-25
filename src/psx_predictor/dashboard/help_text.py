@@ -368,6 +368,30 @@ HELP: dict[str, HelpTopic] = {
         line just by chance.
         """,
     ),
+    "pf_daily_calls": _t(
+        "Yesterday's calls vs. today's result",
+        """
+        **What it is:** every call the model made for one trading day, next to what each
+        stock really did that day. It opens on the newest day that has closed. Use the
+        **Session** box to look at earlier days, or at the next day's calls before it closes.
+
+        **The columns:**
+        - **Call** is what the model said: BUY, SELL or HOLD.
+        - **Chance of UP** is how likely it said a rise was.
+        - **Previous close** and **Close** are the prices before and on that day, and
+          **Actual move** is the change between them.
+        - **Went** says whether the stock closed up, down or flat.
+        - **Result** is Right or Wrong. **Pending** means that day has not closed yet, or
+          the daily run has not scored it yet.
+
+        **How it is scored:** a BUY is right when the stock closes higher than the day
+        before. A SELL is right when it closes flat or lower. A HOLD is right when the move
+        is smaller than 0.75% either way.
+
+        **How to read it:** one day says very little, because a coin flip is right about
+        half the time. Look at many days, or at the hit rate below.
+        """,
+    ),
     "pf_track_record": _t(
         "Track record by stock",
         """

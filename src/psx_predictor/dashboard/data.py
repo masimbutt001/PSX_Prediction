@@ -7,7 +7,7 @@ slow ones in `st.cache_data`.
 import datetime
 import json
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Callable, Optional
 
 import numpy as np
 import pandas as pd
@@ -221,6 +221,126 @@ def prediction_history(preds: pd.DataFrame, symbol: str, limit: int = 30) -> pd.
             }
         )
     return pd.DataFrame(rows)
+
+
+def call_sessions(preds: pd.DataFrame) -> pd.DataFrame:
+    """One row per target session, newest first: how many calls it has and how many are scored.
+
+    Columns: `target_date`, `calls`, `scored`, `correct`, `called_on` (newest generation
+    time of that session's calls).
+    """
+    preds = dedupe_predictions(preds)
+    cols = ["target_date", "calls", "scored", "correct", "called_on"]
+    if preds.empty or "target_date" not in preds.columns:
+        return pd.DataFrame(columns=cols)
+    df = preds.copy()
+    df["target_date"] = df["target_date"].astype(str)
+    outcome = (
+        df["realized_outcome"] if "realized_outcome" in df.columns else pd.Series(np.nan, df.index)
+    )
+    df["_scored"] = outcome.notna()
+    df["_correct"] = df["_scored"] & (
+        df["is_correct"].fillna(False).astype(bool) if "is_correct" in df.columns else False
+    )
+    gen = df["generated_at"] if "generated_at" in df.columns else pd.Series("", df.index)
+    df["_gen"] = gen.astype(str)
+    out = (
+        df.groupby("target_date")
+        .agg(
+            calls=("symbol", "size"),
+            scored=("_scored", "sum"),
+            correct=("_correct", "sum"),
+            called_on=("_gen", "max"),
+        )
+        .reset_index()
+        .sort_values("target_date", ascending=False)
+        .reset_index(drop=True)
+    )
+    out[["calls", "scored", "correct"]] = out[["calls", "scored", "correct"]].astype(int)
+    return out[cols]
+
+
+def latest_scored_session(sessions: pd.DataFrame) -> Optional[str]:
+    """Newest target session with at least one scored call, else the newest session."""
+    if sessions.empty:
+        return None
+    scored = sessions[sessions["scored"] > 0]
+    row = scored.iloc[0] if not scored.empty else sessions.iloc[0]
+    return str(row["target_date"])
+
+
+def _closes_around(prices: pd.DataFrame, target: str) -> tuple[float, float]:
+    """(previous close, close) for the `target` session; NaN when the session is missing."""
+    nan = float("nan")
+    if prices is None or prices.empty or "close" not in prices.columns:
+        return nan, nan
+    d = _date_col(prices)
+    dates = prices[d].astype(str).str[:10].tolist()
+    if target not in dates:
+        return nan, nan
+    i = dates.index(target)
+    close = float(prices["close"].iloc[i])
+    prev = float(prices["close"].iloc[i - 1]) if i > 0 else nan
+    return prev, close
+
+
+def session_calls(
+    preds: pd.DataFrame,
+    target_date: str,
+    prices: Optional[Callable[[str], pd.DataFrame]] = None,
+) -> pd.DataFrame:
+    """Every call made for `target_date` next to what the stock really did that session.
+
+    The result follows the audit's rules: BUY is right when the close is higher than the
+    previous close, SELL when it is flat or lower, HOLD when the move is within 0.75%.
+    `prices(symbol)` returns that stock's price history and fills the two close columns.
+    Rows come right first, then wrong, then pending, each sorted by stock.
+    """
+    cols = [
+        "Stock",
+        "Call",
+        "Chance of UP",
+        "Previous close",
+        "Close",
+        "Actual move",
+        "Went",
+        "Result",
+    ]
+    preds = dedupe_predictions(preds)
+    if preds.empty:
+        return pd.DataFrame(columns=cols)
+    g = preds[preds["target_date"].astype(str) == str(target_date)]
+    rows = []
+    for _, r in g.iterrows():
+        sym = str(r["symbol"])
+        outcome = r.get("realized_outcome")
+        known = outcome is not None and not pd.isna(outcome)
+        nan = float("nan")
+        prev, close = _closes_around(prices(sym), str(target_date)) if prices else (nan, nan)
+        move = float(outcome) if known else float("nan")
+        if known:
+            went = "Up" if move > 0 else "Down" if move < 0 else "Flat"
+            result = "Right" if bool(r.get("is_correct")) else "Wrong"
+        else:
+            went, result = "Not closed yet", "Pending"
+        rows.append(
+            {
+                "Stock": sym,
+                "Call": str(r.get("signal", "")).upper(),
+                "Chance of UP": float(r["up_probability"]),
+                "Previous close": prev,
+                "Close": close if known else float("nan"),
+                "Actual move": move * 100.0 if known else float("nan"),
+                "Went": went,
+                "Result": result,
+            }
+        )
+    out = pd.DataFrame(rows, columns=cols)
+    if out.empty:
+        return out
+    order = {"Right": 0, "Wrong": 1, "Pending": 2}
+    out["_o"] = out["Result"].map(order)
+    return out.sort_values(["_o", "Stock"]).drop(columns="_o").reset_index(drop=True)
 
 
 def read_pipeline_runs(log_file: Path, limit: int = 20) -> list[dict[str, Any]]:
