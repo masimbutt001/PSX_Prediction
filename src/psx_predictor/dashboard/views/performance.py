@@ -21,6 +21,11 @@ from psx_predictor.dashboard.components.figures import (
     drawdown_chart,
     equity_chart,
 )
+from psx_predictor.dashboard.components.help import (
+    help_button,
+    inline_help,
+    section_title,
+)
 from psx_predictor.dashboard.components.ui import disclaimer, kpi_row, page_header
 from psx_predictor.dashboard.theme import palette
 from psx_predictor.monitoring.calibration import compute_expected_calibration_error
@@ -39,16 +44,18 @@ tab_live, tab_bt = st.tabs(
 # ---- Live track record ----
 with tab_live:
     preds = state.predictions()
-    window = (
-        st.segmented_control(
-            "Window",
-            ["30 days", "90 days", "All time"],
-            default="90 days",
-            label_visibility="collapsed",
-            key="perf_window",
+    with st.container(horizontal=True, vertical_alignment="center", gap="small"):
+        window = (
+            st.segmented_control(
+                "Window",
+                ["30 days", "90 days", "All time"],
+                default="90 days",
+                label_visibility="collapsed",
+                key="perf_window",
+            )
+            or "90 days"
         )
-        or "90 days"
-    )
+        help_button("pf_window")
     days = {"30 days": 30, "90 days": 90, "All time": None}[window]
     res = data.resolved_predictions(preds)
     if days and not res.empty:
@@ -93,13 +100,14 @@ with tab_live:
                     "Sessions that closed higher",
                     "muted",
                 ),
-            ]
+            ],
+            ["pf_hit_rate", "pf_brier", "pf_ece", "pf_up_days"],
         )
         st.write("")
         c1, c2 = st.columns([1, 1.3], gap="large")
         with c1:
             with st.container(border=True):
-                st.markdown("##### Are the probabilities honest?")
+                section_title("Are the probabilities honest?", "pf_calibration")
                 st.caption(
                     "When the model says 60% UP, the stock should rise about 60% of the "
                     "time. Points near the dotted line mean it is well calibrated."
@@ -109,7 +117,7 @@ with tab_live:
                 )
         with c2:
             with st.container(border=True):
-                st.markdown("##### Track record by stock")
+                section_title("Track record by stock", "pf_track_record")
                 rec = data.track_record(res)
                 table = rec.rename(
                     columns={
@@ -231,18 +239,26 @@ def render_swing(
                 "Return difference",
                 "up" if diff > 0 else "down",
             ),
-        ]
+        ],
+        [
+            "bt_total_return",
+            "bt_win_rate",
+            "bt_avg_r",
+            "bt_max_drawdown",
+            "bt_exposure",
+            "bt_vs_bh",
+        ],
     )
     for note in res.notes:
         st.caption(f":material/info: {note}")
     st.write("")
     with st.container(border=True):
-        st.markdown(f"##### {sym} · portfolio value")
+        section_title(f"{sym} · portfolio value", "bt_equity")
         st.plotly_chart(
             equity_chart(res.simulation.equity_curve, res.benchmark.equity_curve, SWING),
             width="stretch",
         )
-        st.markdown("###### Drawdown")
+        section_title("Drawdown", "bt_drawdown", level=6)
         st.plotly_chart(
             drawdown_chart(res.simulation.equity_curve),
             width="stretch",
@@ -267,6 +283,7 @@ def render_swing(
         ]
     )
     with st.expander(f"Trades ({len(trades)})"):
+        inline_help("One row per position, from entry to final exit.", "bt_trades")
         if trades.empty:
             st.caption("No setups met every rule in this period.")
         else:
@@ -291,6 +308,7 @@ def render_swing(
             )
 
     with st.expander(":material/table_chart: Same rules on every stock"):
+        inline_help("The same settings replayed on every stock with enough history.", "bt_universe")
         rows = _universe_table(cfg, cash, rf)
         if rows:
             pct = st.column_config.NumberColumn(format="%+.1f%%")
@@ -314,6 +332,7 @@ def render_swing(
 # ---- Backtest ----
 with tab_bt:
     with st.container(border=True):
+        section_title("Backtest settings", "bt_settings", level=6)
         c_sym, c_strat, c_cash, c_rf = st.columns([1, 2.6, 1.1, 1.1], vertical_alignment="bottom")
         syms = state.symbols()
         sym = c_sym.selectbox(
@@ -346,6 +365,7 @@ with tab_bt:
     swing_cfg = SwingStrategyConfig()
     if strategy == SWING:
         with st.expander(":material/tune: Swing rules", expanded=False):
+            inline_help("What each rule does.", "bt_swing_rules")
             st.caption(
                 "Buy pullbacks in an uptrend: close above SMA 200, EMA 20 above EMA 50 and "
                 "ADX above the minimum. The low touches EMA 20 or the middle Bollinger band "
@@ -436,15 +456,23 @@ with tab_bt:
                     "Return difference",
                     "up" if diff > 0 else "down",
                 ),
-            ]
+            ],
+            [
+                "bt_total_return",
+                "bt_cagr",
+                "bt_sharpe",
+                "bt_max_drawdown",
+                "bt_win_rate",
+                "bt_vs_bh",
+            ],
         )
         st.write("")
         with st.container(border=True):
-            st.markdown(f"##### {sym} · portfolio value")
+            section_title(f"{sym} · portfolio value", "bt_equity")
             st.plotly_chart(
                 equity_chart(result.equity_curve, bench.equity_curve, strategy), width="stretch"
             )
-            st.markdown("###### Drawdown")
+            section_title("Drawdown", "bt_drawdown", level=6)
             st.plotly_chart(
                 drawdown_chart(result.equity_curve),
                 width="stretch",
@@ -464,6 +492,7 @@ with tab_bt:
             ]
         )
         with st.expander(f"Trades ({len(trades)})"):
+            inline_help("Every buy and sell the replay made.", "bt_trades")
             if trades.empty:
                 st.caption("No trades in this period.")
             else:

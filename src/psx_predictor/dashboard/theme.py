@@ -188,6 +188,27 @@ h1, h2, h3 {{ letter-spacing: -0.01em; }}
 .psx-sub {{ color: {p.muted}; margin-top: -0.6rem; margin-bottom: 0.6rem; }}
 .psx-heat {{ border-radius: 10px; padding: 10px 12px; }}
 .psx-heat b {{ font-family: {MONO_FAMILY}; font-size: 16px; display: block; }}
+/* (?) explanation buttons and the Listen bar (components/help.py) */
+div[class*="st-key-psxhelp-"] {{ position: relative; }}
+div[class*="st-key-psxhelp-"] > div:has(> [data-testid="stPopover"]) {{
+  position: absolute; top: 8px; right: 8px; z-index: 5; width: auto; }}
+[class*="st-key-psxq-"] [data-testid="stPopoverButton"] {{
+  min-height: 0; padding: 0 2px; color: {p.muted}; }}
+[class*="st-key-psxq-"] [data-testid="stPopoverButton"]:hover {{ color: {p.accent}; }}
+[class*="st-key-psxq-"] [data-testid="stPopoverButton"] div[aria-hidden="true"] {{
+  display: none; }}
+[data-testid="stPopoverBody"] {{ max-width: 460px; }}
+.psx-listenbar {{ display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
+  padding-top: 8px; border-top: 1px solid {p.border}; }}
+.psx-listen {{ display: inline-flex; align-items: center; gap: 6px; height: 32px;
+  padding: 0 14px; border-radius: 999px; border: 1px solid {p.accent}; cursor: pointer;
+  background: {p.accent}; color: #fff; font: inherit; font-size: 13px; font-weight: 600; }}
+.psx-listen:hover {{ filter: brightness(1.08); }}
+.psx-listen.psx-speaking {{ background: transparent; color: {p.accent}; }}
+.psx-listen-icon {{ font-size: 11px; }}
+.psx-listenbar select {{ height: 32px; border-radius: 8px; border: 1px solid {p.border};
+  background: {p.surface2}; color: {p.text}; font: inherit; font-size: 12px; padding: 0 6px;
+  max-width: 190px; }}
 .psx-disclaimer {{ color: {p.muted}; font-size: 12px; margin-top: 1.5rem; }}
 </style>
 """

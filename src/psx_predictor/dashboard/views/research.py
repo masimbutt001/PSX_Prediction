@@ -6,6 +6,11 @@ import pandas as pd
 import streamlit as st
 
 from psx_predictor.dashboard import state
+from psx_predictor.dashboard.components.help import (
+    helped,
+    inline_help,
+    section_title,
+)
 from psx_predictor.dashboard.components.research_view import (
     create_score_history_chart,
     files_table,
@@ -40,7 +45,7 @@ if not all_files:
     st.stop()
 
 # ---- Overview across all stocks ----
-st.subheader("Latest research across stocks")
+section_title("Latest research across stocks", "rs_overview", level=3)
 st.caption(
     "Ranked by short-term outlook × recency weight × confidence. "
     "Research older than 30 days is marked stale."
@@ -74,14 +79,16 @@ if not sym_files:
     st.info(f"No research for {symbol} yet.")
     st.stop()
 
-st.markdown(f"**{len(sym_files)} research file(s) for {symbol}**")
+inline_help(f"{len(sym_files)} research file(s) for {symbol}", "rs_files")
 st.dataframe(files_table(sym_files, video_keys), width="stretch", hide_index=True)
 
 history = score_history(sym_files)
 if len(history) >= 2:
-    st.plotly_chart(
-        style_figure(create_score_history_chart(history, symbol), height=360), width="stretch"
-    )
+    with helped("rs_history"):
+        st.plotly_chart(
+            style_figure(create_score_history_chart(history, symbol), height=360),
+            width="stretch",
+        )
 
 date_labels = [str(f.research_date or f.path.stem) for f in sym_files]
 chosen_label = st.selectbox("Research date", date_labels, index=0)
@@ -107,7 +114,8 @@ st.caption(
     f"by {rep.generated_by or '?'}"
 )
 
-m = st.columns(6)
+with helped("rs_metrics"):
+    m = st.columns(6)
 m[0].metric("Stance", rec.stance or "-")
 m[1].metric("Fair value (PKR)", f"{rec.fair_value_pkr:,.2f}" if rec.fair_value_pkr else "-")
 m[2].metric("Upside", f"{rec.upside_pct:.1f}%" if rec.upside_pct is not None else "-")
@@ -150,6 +158,7 @@ if rep.key_takeaways:
 # How this research reaches predictions
 ctx = research_context_for_date([rep], pd.Timestamp.today().date())
 if ctx:
+    inline_help("How this research reaches predictions", "rs_weight")
     st.info(
         f"Weight in today's predictions: **{ctx['weight']:.2f}** "
         f"(age {ctx['age_days']} days; influence halves every 30 days and stops after 120). "
@@ -178,6 +187,7 @@ if not preds.empty and "research_json" in preds.columns:
             f"Research from {snap.get('research_date')} {verdict} it."
         )
 
+inline_help("Everything in the research file", "rs_details")
 tabs = st.tabs(
     ["Report", "Scores", "Catalysts & risks", "News", "Financials", "Events", "Sources", "Raw JSON"]
 )

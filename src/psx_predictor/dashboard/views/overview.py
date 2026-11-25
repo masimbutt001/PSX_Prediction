@@ -5,6 +5,7 @@ import streamlit as st
 
 from psx_predictor.dashboard import data, state
 from psx_predictor.dashboard.components.figures import sector_bar
+from psx_predictor.dashboard.components.help import section_title
 from psx_predictor.dashboard.components.jobs_panel import run_button
 from psx_predictor.dashboard.components.ui import (
     disclaimer,
@@ -96,7 +97,8 @@ if not macro.empty and "usd_pkr" in macro.columns:
     cards.append(
         ("USD / PKR", f"{float(last['usd_pkr']):.2f}", fmt_pct(fx_ret) + " today", tone_of(-fx_ret))
     )
-kpi_row(cards)
+helps = ["ov_kse100", "ov_signals", "ov_hit_rate", "ov_brier", "ov_usdpkr"][: len(cards)]
+kpi_row(cards, helps)
 
 st.write("")
 left, right = st.columns([2.3, 1], gap="large")
@@ -105,7 +107,8 @@ left, right = st.columns([2.3, 1], gap="large")
 with left:
     with st.container(border=True):
         h1, h2 = st.columns([1, 1], vertical_alignment="center")
-        h1.markdown("##### Watchlist and signals")
+        with h1:
+            section_title("Watchlist and signals", "ov_watchlist")
         sig_filter = h2.segmented_control(
             "Signal",
             ["All", "BUY", "HOLD", "SELL"],
@@ -202,7 +205,7 @@ with left:
 with right:
     sect = data.sector_moves(snap)
     with st.container(border=True):
-        st.markdown("##### Sector moves, last session")
+        section_title("Sector moves, last session", "ov_sectors")
         if sect.empty:
             st.caption("No price data yet.")
         else:
@@ -211,7 +214,7 @@ with right:
     runs = state.pipeline_runs(limit=10)
     run, run_tasks = data.latest_steps(runs)
     with st.container(border=True):
-        st.markdown("##### Last daily run")
+        section_title("Last daily run", "ov_last_run")
         if run is None:
             st.caption("No daily run logged yet. Run `uv run psx schedule run-daily`.")
         else:
@@ -237,7 +240,7 @@ with right:
 
     headlines = state.news(limit=5)
     with st.container(border=True):
-        st.markdown("##### Latest news")
+        section_title("Latest news", "ov_news")
         if headlines.empty:
             st.caption("No processed news yet.")
         else:

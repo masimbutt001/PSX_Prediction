@@ -9,6 +9,11 @@ from psx_predictor.dashboard.components.figures import (
     price_chart,
     probability_gauge,
 )
+from psx_predictor.dashboard.components.help import (
+    help_button,
+    inline_help,
+    section_title,
+)
 from psx_predictor.dashboard.components.jobs_panel import run_button
 from psx_predictor.dashboard.components.ui import (
     disclaimer,
@@ -58,13 +63,16 @@ with t1:
             f'<span class="psx-muted" style="font-size:12px">PKR · close '
             f"{pd.Timestamp(df['trade_date'].iloc[-1]):%a %d %b %Y}</span>"
         )
-    st.html(
-        f'<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">'
-        f'<span style="font-size:28px;font-weight:700">{text(symbol)}</span>'
-        f'<span class="psx-muted">{text(name)}</span>'
-        f'<span class="psx-pill" style="height:24px">{text(sector)}</span></div>'
-        f'<div style="margin-top:4px">{price_html}</div>'
-    )
+    with st.container(horizontal=True, vertical_alignment="center", gap="small"):
+        st.html(
+            f'<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">'
+            f'<span style="font-size:28px;font-weight:700">{text(symbol)}</span>'
+            f'<span class="psx-muted">{text(name)}</span>'
+            f'<span class="psx-pill" style="height:24px">{text(sector)}</span></div>'
+            f'<div style="margin-top:4px">{price_html}</div>',
+            width="content",
+        )
+        help_button("sd_title")
 with t2:
     b1, b3, b2 = st.columns(3)
     with b3:
@@ -129,6 +137,7 @@ left, right = st.columns([2.3, 1], gap="large")
 # ---- Chart ----
 with left:
     with st.container(border=True):
+        section_title("Price chart", "sd_chart")
         c1, c2 = st.columns([1, 1.4], vertical_alignment="center")
         rng = (
             c1.segmented_control(
@@ -191,6 +200,7 @@ with left:
         ("1-year change", fmt_pct((closes.iloc[-1] / float(tail["close"].iloc[0]) - 1) * 100)),
         ("Sessions on file", f"{len(df):,}"),
     ]
+    inline_help("Key numbers", "sd_stats")
     cols = st.columns(len(stats))
     for col, (lab, val) in zip(cols, stats, strict=True):
         col.html(
@@ -202,16 +212,19 @@ with left:
 with right:
     with st.container(border=True):
         if not latest:
-            st.markdown("##### Next session")
+            section_title("Next session", "sd_next_session")
             st.info("No prediction logged for this stock yet. Use **Refresh prediction**.")
         else:
             up = float(latest["up_probability"])
             target = pd.Timestamp(str(latest["target_date"]))
-            st.html(
-                f'<div style="display:flex;justify-content:space-between;align-items:center">'
-                f'<span style="font-weight:600;font-size:16px">Next session · {target:%a %d %b}'
-                f"</span>{signal_chip(latest.get('signal'))}</div>"
-            )
+            with st.container(horizontal=True, vertical_alignment="center", gap="small"):
+                st.html(
+                    f'<div style="display:flex;justify-content:space-between;'
+                    f'align-items:center;gap:10px">'
+                    f'<span style="font-weight:600;font-size:16px">Next session · '
+                    f"{target:%a %d %b}</span>{signal_chip(latest.get('signal'))}</div>",
+                )
+                help_button("sd_next_session")
             g, info = st.columns([1, 1.1], vertical_alignment="center")
             g.plotly_chart(
                 probability_gauge(up),
@@ -248,11 +261,11 @@ with right:
                 if isinstance(v, (int, float))
             }
             if drivers:
-                st.markdown("**Why the model thinks this**")
+                section_title("Why the model thinks this", "sd_drivers", level=6)
                 st.plotly_chart(
                     drivers_chart(drivers), width="stretch", config={"displayModeBar": False}
                 )
-                st.caption("Bars show each input's weight in this prediction.")
+                st.caption("Bars show how much the model relies on each input.")
             if research.get("agrees_with_model") is False:
                 st.warning("The latest research disagrees with the model's direction.")
 
@@ -265,6 +278,7 @@ tab_hist, tab_news, tab_research = st.tabs(
     ]
 )
 with tab_hist:
+    inline_help("The last 40 predictions for this stock and how they turned out.", "sd_history")
     hist = data.prediction_history(preds, symbol, limit=40)
     if hist.empty:
         st.caption("No predictions logged for this stock yet.")
@@ -289,6 +303,7 @@ with tab_hist:
             },
         )
 with tab_news:
+    inline_help(f"Headlines and announcements matched to {symbol}.", "sd_news")
     items = state.news(symbol=symbol, limit=15)
     if items.empty:
         st.caption(f"No news matched to {symbol} yet.")
@@ -307,6 +322,7 @@ with tab_news:
             )
         st.html("".join(rows))
 with tab_research:
+    inline_help("The research applied to the latest prediction.", "sd_research")
     snap_r = data.parse_json(latest.get("research_json")) if latest else {}
     if not snap_r:
         st.caption(
