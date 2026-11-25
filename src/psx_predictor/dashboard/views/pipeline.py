@@ -4,6 +4,7 @@ import pandas as pd
 import streamlit as st
 
 from psx_predictor.dashboard import data, state
+from psx_predictor.dashboard.components.help import section_title
 from psx_predictor.dashboard.components.jobs_panel import run_button
 from psx_predictor.dashboard.components.ui import disclaimer, kpi_row, page_header, step_row
 from psx_predictor.dashboard.theme import palette
@@ -58,14 +59,15 @@ kpi_row(
             else "None yet",
             "muted",
         ),
-    ]
+    ],
+    ["pl_last_run", "pl_last_ok", "pl_prices", "pl_macro", "pl_predictions"],
 )
 st.write("")
 
 left, right = st.columns([1, 1.4], gap="large")
 with left:
     with st.container(border=True):
-        st.markdown("##### Run now")
+        section_title("Run now", "pl_run_now")
         r1, r2, r3 = st.columns(3)
         with r1:
             run_button(
@@ -100,7 +102,7 @@ with left:
         )
 
     with st.container(border=True):
-        st.markdown("##### Latest run, step by step")
+        section_title("Latest run, step by step", "pl_steps")
         if not base_run:
             st.caption("No daily run logged yet.")
         else:
@@ -153,7 +155,7 @@ def _result_label(run: dict) -> str:
 
 with right:
     with st.container(border=True):
-        st.markdown("##### Price data by stock")
+        section_title("Price data by stock", "pl_price_table")
         if stale:
             run_button(
                 f"Update {len(stale)} stock(s) that are behind",
@@ -183,7 +185,7 @@ with right:
             row_height=36,
         )
     with st.container(border=True):
-        st.markdown("##### Recent runs")
+        section_title("Recent runs", "pl_recent")
         if not runs:
             st.caption("Nothing in data/pipeline.log yet.")
         else:

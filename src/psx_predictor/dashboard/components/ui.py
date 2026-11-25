@@ -4,6 +4,7 @@ from typing import Optional, Sequence
 
 import streamlit as st
 
+from psx_predictor.dashboard.components.help import helped
 from psx_predictor.dashboard.theme import palette, signal_colors, text
 
 Tone = str  # "up" | "down" | "warn" | "muted" | "accent"
@@ -41,12 +42,24 @@ def kpi_card(label: str, value: str, note: str = "", tone: Tone = "muted") -> st
     )
 
 
-def kpi_row(cards: Sequence[tuple[str, str, str, Tone]]) -> None:
-    """A responsive row of KPI cards: (label, value, note, tone) each."""
+def kpi_row(
+    cards: Sequence[tuple[str, str, str, Tone]],
+    helps: Optional[Sequence[Optional[str]]] = None,
+) -> None:
+    """A responsive row of KPI cards: (label, value, note, tone) each.
+
+    `helps` gives the explanation key for each card (see dashboard/help_text.py); a card
+    with a key gets a (?) button in its corner.
+    """
+    keys = list(helps) if helps is not None else [None] * len(cards)
     cols = st.columns(len(cards))
-    for col, (label, value, note, tone) in zip(cols, cards, strict=True):
+    for col, (label, value, note, tone), key in zip(cols, cards, keys, strict=True):
         with col:
-            st.html(kpi_card(label, value, note, tone))
+            if key:
+                with helped(key):
+                    st.html(kpi_card(label, value, note, tone))
+            else:
+                st.html(kpi_card(label, value, note, tone))
 
 
 def signal_chip(signal: Optional[str]) -> str:

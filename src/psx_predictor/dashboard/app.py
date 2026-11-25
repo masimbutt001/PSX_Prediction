@@ -11,6 +11,7 @@ import streamlit as st
 
 from psx_predictor import __version__
 from psx_predictor.dashboard import data, state
+from psx_predictor.dashboard.components.help import help_button, inject_speech
 from psx_predictor.dashboard.components.jobs_panel import job_panel
 from psx_predictor.dashboard.components.ui import status_pill
 from psx_predictor.dashboard.theme import inject_css
@@ -82,7 +83,9 @@ def render_header() -> None:
             st.switch_page(STOCK_PAGE)
     with c_status:
         label, ok, warn = freshness_label(snap)
-        st.html(status_pill(label, ok=ok, warn=warn))
+        with st.container(horizontal=True, vertical_alignment="center", gap="small", wrap=False):
+            st.html(status_pill(label, ok=ok, warn=warn), width="content")
+            help_button("hdr_freshness")
     with c_btn:
         if st.button(
             "Refresh",
@@ -103,6 +106,7 @@ def main() -> None:
     )
     st.logo(str(ASSETS_DIR / "logo.svg"), icon_image=str(ASSETS_DIR / "icon.svg"), size="large")
     inject_css()
+    inject_speech()
     nav = st.navigation(build_pages(), position="top")
     render_header()
     job_panel()
