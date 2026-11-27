@@ -345,6 +345,7 @@ after all other sections, and only from what you found.
 - `pronunciations`: every ticker, abbreviation, fiscal period and local name a text-to-speech
   voice could get wrong (tickers letter by letter, "Rs" as "rupees", "bn" as "billion",
   Urdu or company names spelled phonetically).
+- `story` must be a JSON array of separate sentence strings, not one paragraph string.
 - `tone` must match the scores and stance. Keep it balanced: mention the main risk in `story`.
 
 ## Markdown report layout (`.md` file)

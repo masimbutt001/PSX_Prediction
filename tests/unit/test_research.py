@@ -336,3 +336,22 @@ class TestVideoBrief:
         bad["video_brief"]["tone"] = "EXCITED"
         report, errors, _ = validate_research_data(bad)
         assert report is None and any("tone" in e for e in errors)
+
+    def test_story_as_paragraph_is_split_into_sentences(self, sample: dict[str, Any]) -> None:
+        para = copy.deepcopy(sample)
+        para["video_brief"]["story"] = (
+            "Profit jumped twelvefold. Margins hit 20 percent! Is it sustainable? 2027 will tell."
+        )
+        report, errors, _ = validate_research_data(para)
+        assert report is not None and errors == []
+        assert report.video_brief.story == [
+            "Profit jumped twelvefold.",
+            "Margins hit 20 percent!",
+            "Is it sustainable?",
+            "2027 will tell.",
+        ]
+
+        for empty in ("", "   ", None):
+            para["video_brief"]["story"] = empty
+            report, errors, _ = validate_research_data(para)
+            assert report is not None and report.video_brief.story == []

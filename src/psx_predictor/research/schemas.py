@@ -5,9 +5,10 @@ data/research/<SYMBOL>_<YYYY-MM-DD>.json next to a human-readable .md report.
 """
 
 import datetime
-from typing import Literal, Optional
+import re
+from typing import Any, Literal, Optional
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 RESEARCH_SCHEMA_VERSION = "1.0"
 
@@ -267,6 +268,20 @@ class VideoBrief(_Section):
     chart_highlights: list[ChartHighlight] = Field(default_factory=list)
     pronunciations: list[Pronunciation] = Field(default_factory=list)
     closing_line: Optional[str] = None
+
+    @field_validator("story", mode="before")
+    @classmethod
+    def _story_as_sentences(cls, value: Any) -> Any:
+        """Accept a single paragraph (a common model slip) and split it into sentences."""
+        if value is None:
+            return []
+        if isinstance(value, str):
+            text = value.strip()
+            if not text:
+                return []
+            parts = re.split(r"(?<=[.!?])\s+(?=[A-Z0-9\"'])", text)
+            return [p.strip() for p in parts if p.strip()]
+        return value
 
 
 class Source(_Section):
